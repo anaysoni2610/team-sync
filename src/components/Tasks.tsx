@@ -230,11 +230,18 @@ export default function Tasks() {
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Due Date</label>
             <input
-              type="datetime-local"
-              value={newTask.due_date ? new Date(newTask.due_date).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value ? new Date(e.target.value).toISOString() : null })}
-              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50 [color-scheme:dark]"
-            />
+  type="datetime-local"
+  value={toLocalInputString(newTask.due_date)}
+  onChange={(e) => {
+    if (!e.target.value) {
+      setNewTask({ ...newTask, due_date: null });
+      return;
+    }
+    const localDate = new Date(e.target.value);
+    setNewTask({ ...newTask, due_date: localDate.toISOString() });
+  }}
+  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50 [color-scheme:dark]"
+/>
           </div>
           <button
             type="submit"
