@@ -46,28 +46,38 @@ export default function App() {
         {activeTab === 'settings' && <Settings />}
       </div>
 
-      {/* Bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-800/90 backdrop-blur-xl border-t border-slate-700/50 z-50">
-        <div className="max-w-4xl mx-auto flex items-center justify-around px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all min-w-[60px] ${
-                  active ? 'text-teal-400' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                <Icon className={`w-5 h-5 transition-transform ${active ? 'scale-110' : ''}`} />
-                <span className="text-[10px] font-medium">{tab.label}</span>
-                {active && <div className="w-1 h-1 rounded-full bg-teal-400" />}
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    </div>
+{/* Floating Island Navigation */}
+<div className="fixed bottom-4 inset-x-0 z-40 px-4 pointer-events-none flex justify-center">
+  <nav className="pointer-events-auto w-full max-w-md glass-panel rounded-2xl p-1.5 flex items-center justify-around shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
+    {[
+      { id: 'tasks', label: 'Tasks', icon: ListTodo },
+      { id: 'agenda', label: 'Agenda', icon: Calendar },
+      { id: 'assignments', label: 'Assignments', icon: GraduationCap },
+      { id: 'settings', label: 'Settings', icon: SettingsIcon },
+    ].map((tab) => {
+      const Icon = tab.icon;
+      const isActive = currentTab === tab.id;
+      return (
+        <button
+          key={tab.id}
+          onClick={() => setCurrentTab(tab.id)}
+          className={`relative px-4 py-2 rounded-xl flex flex-col items-center gap-1 transition-all duration-200 active:scale-95 ${
+            isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          {/* Active Pill Glow Background */}
+          {isActive && (
+            <span className="absolute inset-0 bg-indigo-600/20 border border-indigo-500/30 rounded-xl -z-10 shadow-[0_0_12px_rgba(99,102,241,0.25)]" />
+          )}
+
+          <Icon className={`w-4 h-4 transition-transform ${isActive ? 'scale-110 text-indigo-400' : ''}`} />
+          <span className={`text-[10px] tracking-tight font-medium ${isActive ? 'font-semibold' : ''}`}>
+            {tab.label}
+          </span>
+        </button>
+      );
+    })}
+  </nav>
+</div>
   );
 }
