@@ -86,7 +86,7 @@ export default function Tasks() {
     };
   }, [fetchTasks, isGuest]);
 
-  const handleAdd = async (e: React.FormEvent) => {
+ const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title.trim()) return;
 
@@ -113,11 +113,26 @@ export default function Tasks() {
       status: 'pending' as TaskStatus,
     };
 
-    const { error } = await supabase.from('tasks').insert(payload);
+    // Insert into Supabase and get the created row back immediately
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert(payload)
+      .select()
+      .single();
+
     if (error) {
       console.error('Failed to add task:', error.message);
       return;
     }
+
+    // Instantly show the new task at the top of your list
+    if (data) {
+      setTasks((prev) => {
+        if (prev.some((t) => t.id === data.id)) return prev;
+        return [data, ...prev];
+      });
+    }
+
     setNewTask({ title: '', description: '', due_date: null, status: 'pending' });
     setShowForm(false);
   };
