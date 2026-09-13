@@ -1,119 +1,239 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { CheckSquare, Mail, Lock, Loader2, Sparkles } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Sparkles,
+  Zap,
+} from 'lucide-react';
 
 export default function Auth() {
-  const { signIn, signUp, signInGuest } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const authContext = useAuth() as any;
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setStatus(null);
     setLoading(true);
-    const fn = mode === 'signin' ? signIn : signUp;
-    const { error } = await fn(email, password);
-    if (error) setError(error);
-    setLoading(false);
+
+    try {
+      if (isSignUp) {
+        const { error, data } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+
+        if (error) throw error;
+
+        if (data.session) {
+          setStatus({ type: 'success', message: 'Account created! Welcome to TeamSync.' });
+        } else {
+          setStatus({
+            type: 'success',
+            message: 'Confirmation email sent! Please check your inbox.',
+          });
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      setStatus({
+        type: 'error',
+        message: err.message || 'Authentication failed. Please check your details.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = () => {
+    if (authContext.signInAsGuest) {
+      authContext.signInAsGuest();
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-400 to-cyan-600 mb-4 shadow-lg shadow-cyan-500/20">
-            <CheckSquare className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">TeamSync</h1>
-          <p className="text-slate-400 mt-2">Tasks, agendas & Teams assignments — synced everywhere</p>
-        </div>
+    <div className="relative min-h-screen w-full bg-[#08090d] flex items-center justify-center p-4 sm:p-6 overflow-hidden select-none">
+      {/* Ambient background light glows */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[340px] bg-indigo-600/15 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse" />
+      <div className="absolute bottom-1/4 right-1/3 w-[380px] h-[280px] bg-violet-600/10 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-        <div className="bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-8 shadow-2xl">
-          <div className="flex gap-1 bg-slate-900/50 rounded-lg p-1 mb-6">
-            <button
-              onClick={() => { setMode('signin'); setError(null); }}
-              className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-all ${
-                mode === 'signin' ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/20' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setMode('signup'); setError(null); }}
-              className={`flex-1 py-2.5 rounded-md text-sm font-medium transition-all ${
-                mode === 'signup' ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/20' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Sign Up
-            </button>
+      {/* Main Glass Card */}
+      <div className="w-full max-w-[420px] glass-panel rounded-3xl p-6 sm:p-8 relative z-10 shadow-[0_16px_40px_rgba(0,0,0,0.7)] border border-white/[0.08] backdrop-blur-2xl">
+        {/* Brand Header */}
+        <div className="flex flex-col items-center text-center mb-7">
+          <div className="relative group mb-3">
+            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-violet-600 rounded-2xl blur opacity-50 group-hover:opacity-75 transition duration-300" />
+            <div className="relative w-13 h-13 rounded-2xl bg-gradient-to-b from-[#181a24] to-[#0f1118] border border-white/[0.12] flex items-center justify-center shadow-inner">
+              <Zap className="w-6 h-6 text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="text-sm font-medium text-slate-300 mb-1.5 block">Email</label>
-              <div className="relative">
-                <Mail className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-300 mb-1.5 block">Password</label>
-              <div className="relative">
-                <Lock className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white font-medium py-2.5 rounded-lg transition-all shadow-lg shadow-teal-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'signin' ? 'Sign In' : 'Create Account'}
-            </button>
-          </form>
-
-          <p className="text-xs text-slate-500 text-center mt-6">
-            Your data syncs across all your devices via secure cloud storage.
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-1.5">
+            TeamSync
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
+              PRO
+            </span>
+          </h1>
+          <p className="text-zinc-400 text-xs mt-1.5">
+            Your university assignments, tasks, and agendas synced in real time
           </p>
         </div>
 
-        <div className="mt-4 text-center">
+        {/* Tab Switcher Segment */}
+        <div className="relative p-1 bg-black/50 border border-white/[0.05] rounded-xl flex items-center mb-6">
           <button
-            onClick={signInGuest}
-            className="text-sm text-slate-400 hover:text-teal-400 transition-all flex items-center gap-1.5 mx-auto"
+            type="button"
+            onClick={() => {
+              setIsSignUp(false);
+              setStatus(null);
+            }}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+              !isSignUp
+                ? 'bg-zinc-800/90 text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)] border border-white/[0.08]'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
           >
-            <Sparkles className="w-4 h-4" />
-            Try demo / guest mode
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSignUp(true);
+              setStatus(null);
+            }}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+              isSignUp
+                ? 'bg-zinc-800/90 text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)] border border-white/[0.08]'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Create Account
           </button>
         </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Email Input */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-zinc-400 block tracking-wide uppercase">
+              Email Address
+            </label>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
+                <Mail className="w-4 h-4" />
+              </div>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="student@university.edu"
+                className="w-full glass-input rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Password Input */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-zinc-400 block tracking-wide uppercase">
+              Password
+            </label>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
+                <Lock className="w-4 h-4" />
+              </div>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Status / Error Banner */}
+          {status && (
+            <div
+              className={`text-xs px-3.5 py-2.5 rounded-xl flex items-start gap-2.5 border transition-all animate-in fade-in slide-in-from-top-1 ${
+                status.type === 'success'
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                  : 'bg-rose-500/10 text-rose-300 border-rose-500/20'
+              }`}
+            >
+              {status.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              )}
+              <span className="leading-snug">{status.message}</span>
+            </div>
+          )}
+
+          {/* Action Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full relative group overflow-hidden bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-semibold py-2.5 rounded-xl text-xs transition-all duration-200 shadow-[0_4px_18px_rgba(99,102,241,0.35)] hover:shadow-[0_6px_22px_rgba(99,102,241,0.45)] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <span>{isSignUp ? 'Create My Account' : 'Sign In'}</span>
+                <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Guest Access Option */}
+        {authContext.signInAsGuest && (
+          <div className="mt-5 pt-4 border-t border-white/[0.06] text-center">
+            <button
+              type="button"
+              onClick={handleGuestLogin}
+              className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              Explore as Guest (No Cloud Sync)
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Subtle Footer Note */}
+      <p className="absolute bottom-4 text-[11px] text-zinc-600 tracking-wider">
+        Teams & University Task Automation Dashboard
+      </p>
     </div>
   );
 }
