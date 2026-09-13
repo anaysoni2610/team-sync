@@ -4,7 +4,7 @@ import { supabase, type CalendarFeed } from '@/lib/supabase';
 import {
   Settings as SettingsIcon, LogOut, User, Cloud,
   CheckCircle2, XCircle, Loader2, Mail, Shield, Plus,
-  Trash2, Calendar, RefreshCw, Link2, Eye,
+  Trash2, Calendar, RefreshCw, Link2, Eye, KeyRound,
 } from 'lucide-react';
 
 export default function Settings() {
