@@ -163,6 +163,74 @@ export default function Settings() {
         </button>
       </div>
 
+      <LogOut className="w-4 h-4" />
+          {isGuest ? 'Exit Guest Mode' : 'Sign Out'}
+        </button>
+      </div>
+
+      {/* Change Password Card */}
+      <div className="bg-slate-800/40 backdrop-blur border border-slate-700/40 rounded-xl p-5 mt-6">
+        <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
+          <KeyRound className="w-5 h-5 text-teal-400" />
+          Change Password
+        </h3>
+        <p className="text-slate-400 text-xs mb-4">
+          Update your TeamSync account password across all your synced devices.
+        </p>
+
+        <form onSubmit={handlePasswordUpdate} className="space-y-3 max-w-md">
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">New Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3.5 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Confirm New Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3.5 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              required
+            />
+          </div>
+
+          {passwordStatus && (
+            <div
+              className={`text-xs px-3 py-2 rounded-lg flex items-center gap-2 ${
+                passwordStatus.type === 'success'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/20'
+              }`}
+            >
+              {passwordStatus.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <XCircle className="w-4 h-4 shrink-0" />
+              )}
+              {passwordStatus.message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={passwordLoading}
+            className="bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg text-sm transition-all flex items-center justify-center gap-2"
+          >
+            {passwordLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            Update Password
+          </button>
+        </form>
+      </div>
+  
       {/* Calendar Feeds */}
       <div className="bg-slate-800/40 backdrop-blur border border-slate-700/40 rounded-xl p-5 mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
