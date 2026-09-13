@@ -37,7 +37,7 @@ function isOverdue(dateStr: string | null, status: TaskStatus): boolean {
 }
 
 export default function Tasks() {
-  const { isGuest } = useAuth();
+  const { user, isGuest } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
