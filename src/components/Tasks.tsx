@@ -124,6 +124,7 @@ export default function Tasks() {
       description: newTask.description?.trim() || null,
       due_date: newTask.due_date || null,
       status: 'pending' as TaskStatus,
+      user_id: user?.id,
     };
 
     // Insert into Supabase and get the created row back immediately
