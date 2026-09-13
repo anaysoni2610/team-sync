@@ -159,26 +159,40 @@ export default function Assignments() {
   };
 
   const handleStatusChange = async (id: string, status: AssignmentStatus) => {
-    if (isGuest) {
-      setAssignments((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-      return;
-    }
-    const { error } = await supabase.from('assignments').update({ status }).eq('id', id);
-    if (error) {
-      console.error('Failed to update status:', error.message);
-      return;
+    // 1. Immediately update UI state on screen (Zero lag)
+    setAssignments((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status } : a))
+    );
+
+    // 2. Persist change to Supabase in the background
+    if (!isGuest) {
+      const { error } = await supabase
+        .from('assignments')
+        .update({ status })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Failed to update status:', error.message);
+        fetchAssignments(); // Revert back to database state if network failed
+      }
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (isGuest) {
-      setAssignments((prev) => prev.filter((a) => a.id !== id));
-      return;
-    }
-    const { error } = await supabase.from('assignments').delete().eq('id', id);
-    if (error) {
-      console.error('Failed to delete assignment:', error.message);
-      return;
+    // 1. Immediately remove from screen
+    setAssignments((prev) => prev.filter((a) => a.id !== id));
+
+    // 2. Delete from Supabase
+    if (!isGuest) {
+      const { error } = await supabase
+        .from('assignments')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Failed to delete assignment:', error.message);
+        fetchAssignments();
+      }
     }
   };
 
