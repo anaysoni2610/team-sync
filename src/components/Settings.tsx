@@ -154,16 +154,11 @@ export default function Settings() {
             </div>
           </div>
         </div>
-        <button
+       <button
           onClick={signOut}
           className="mt-4 w-full bg-slate-700/50 hover:bg-red-500/20 text-slate-300 hover:text-red-400 border border-slate-700 hover:border-red-500/30 py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
         >
           <LogOut className="w-4 h-4" />
-          {isGuest ? 'Exit Guest Mode' : 'Sign Out'}
-        </button>
-      </div>
-
-      <LogOut className="w-4 h-4" />
           {isGuest ? 'Exit Guest Mode' : 'Sign Out'}
         </button>
       </div>
