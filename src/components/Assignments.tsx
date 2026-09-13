@@ -6,12 +6,13 @@ import {
   X, Loader2, GraduationCap, RefreshCw, CheckCircle2, Calendar,
 } from 'lucide-react';
 
-const statusConfig: Record<AssignmentStatus, { color: string; bg: string; border: string; label: string }> = {
-  pending: { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', label: 'Pending' },
-  in_progress: { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', label: 'In Progress' },
-  submitted: { color: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/30', label: 'Submitted' },
-  graded: { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', label: 'Graded' },
-};
+function toLocalInputString(isoStr: string | null): string {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function formatDeadline(dateStr: string | null): string {
   if (!dateStr) return 'No deadline';
@@ -34,7 +35,7 @@ function isOverdue(dateStr: string | null, status: AssignmentStatus): boolean {
 }
 
 export default function Assignments() {
-  const { isGuest } = useAuth();
+  const { user, isGuest } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -84,9 +85,11 @@ export default function Assignments() {
     const channel = supabase
       .channel('assignments-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, (payload) => {
+        const item = payload.new as Assignment;
+        if (item.user_id && item.user_id !== user?.id) return;
         setAssignments((prev) => {
-          if (prev.some((a) => a.id === payload.new.id)) return prev;
-          const updated = [...prev, payload.new as Assignment];
+          if (prev.some((a) => a.id === item.id)) return prev;
+          const updated = [...prev, item];
           return updated.sort((a, b) => {
             if (!a.deadline) return 1;
             if (!b.deadline) return -1;
@@ -95,8 +98,10 @@ export default function Assignments() {
         });
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assignments' }, (payload) => {
+        const item = payload.new as Assignment;
+        if (item.user_id && item.user_id !== user?.id) return;
         setAssignments((prev) => {
-          const updated = prev.map((a) => (a.id === payload.new.id ? payload.new as Assignment : a));
+          const updated = prev.map((a) => (a.id === item.id ? item : a));
           return updated.sort((a, b) => {
             if (!a.deadline) return 1;
             if (!b.deadline) return -1;
@@ -112,7 +117,7 @@ export default function Assignments() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchAssignments, isGuest]);
+  }, [fetchAssignments, isGuest, user?.id]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,24 +152,37 @@ export default function Assignments() {
       attachment_url: newAssignment.attachment_url?.trim() || null,
       status: 'pending' as AssignmentStatus,
       source: 'manual',
+      user_id: user?.id,
     };
 
-    const { error } = await supabase.from('assignments').insert(payload);
+    const { data, error } = await supabase
+      .from('assignments')
+      .insert(payload)
+      .select()
+      .single();
+
     if (error) {
       console.error('Failed to add assignment:', error.message);
       return;
     }
+
+    if (data) {
+      setAssignments((prev) => [...prev, data].sort((a, b) => {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      }));
+    }
+
     setNewAssignment({ title: '', subject: '', deadline: null, attachment_url: '', status: 'pending', source: 'manual' });
     setShowForm(false);
   };
 
   const handleStatusChange = async (id: string, status: AssignmentStatus) => {
-    // 1. Immediately update UI state on screen (Zero lag)
     setAssignments((prev) =>
       prev.map((a) => (a.id === id ? { ...a, status } : a))
     );
 
-    // 2. Persist change to Supabase in the background
     if (!isGuest) {
       const { error } = await supabase
         .from('assignments')
@@ -173,16 +191,14 @@ export default function Assignments() {
 
       if (error) {
         console.error('Failed to update status:', error.message);
-        fetchAssignments(); // Revert back to database state if network failed
+        fetchAssignments();
       }
     }
   };
 
   const handleDelete = async (id: string) => {
-    // 1. Immediately remove from screen
     setAssignments((prev) => prev.filter((a) => a.id !== id));
 
-    // 2. Delete from Supabase
     if (!isGuest) {
       const { error } = await supabase
         .from('assignments')
@@ -229,27 +245,28 @@ export default function Assignments() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <GraduationCap className="w-6 h-6 text-teal-400" />
+            <GraduationCap className="w-6 h-6 text-indigo-400" />
             Assignments
           </h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-zinc-400 text-sm mt-1">
             {pendingCount} pending{overdueCount > 0 && ` · ${overdueCount} overdue`}
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowImport(!showImport)}
-            className="bg-slate-700/50 hover:bg-slate-700 text-white px-3 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-all"
+            className="bg-zinc-800/60 hover:bg-zinc-700/60 text-zinc-300 border border-white/[0.06] px-3.5 py-2 rounded-xl font-medium text-xs flex items-center gap-2 transition-all active:scale-95"
           >
             {showImport ? <X className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
-            {showImport ? 'Cancel' : 'Import Calendar'}
+            {showImport ? 'Cancel' : 'Import'}
           </button>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-white px-4 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-all shadow-lg shadow-teal-500/20"
+            className="bg-gradient-to-b from-indigo-500 to-indigo-600 hover:brightness-110 text-white px-4 py-2 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all shadow-[0_4px_14px_rgba(99,102,241,0.35)] active:scale-95"
           >
             {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
             {showForm ? 'Cancel' : 'Add'}
@@ -257,39 +274,40 @@ export default function Assignments() {
         </div>
       </div>
 
+      {/* Calendar Import Card */}
       {showImport && (
-        <form onSubmit={handleImportCalendar} className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-xl p-5 mb-6 space-y-4">
+        <form onSubmit={handleImportCalendar} className="glass-panel rounded-2xl p-5 mb-6 space-y-4">
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">Calendar name (optional)</label>
+            <label className="text-xs text-zinc-400 mb-1 block">Calendar Name (optional)</label>
             <input
               autoFocus
               type="text"
-              placeholder="e.g. My Teams Calendar"
+              placeholder="e.g. Teams / Outlook"
               value={importName}
               onChange={(e) => setImportName(e.target.value)}
-              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              className="w-full glass-input rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">iCal / ICS URL from Outlook or Teams</label>
+            <label className="text-xs text-zinc-400 mb-1 block">iCal / ICS URL</label>
             <input
               type="url"
               required
               placeholder="https://outlook.live.com/owa/calendar/.../calendar.ics"
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
-              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              className="w-full glass-input rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none"
             />
           </div>
           {importError && (
-            <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
+            <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3.5 py-2.5">
               {importError}
             </div>
           )}
           <button
             type="submit"
             disabled={syncing}
-            className="w-full bg-teal-500 hover:bg-teal-400 text-white font-medium py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
             Import Deadlines
@@ -297,15 +315,16 @@ export default function Assignments() {
         </form>
       )}
 
+      {/* Manual Creation Form */}
       {showForm && (
-        <form onSubmit={handleAdd} className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-xl p-5 mb-6 space-y-4">
+        <form onSubmit={handleAdd} className="glass-panel rounded-2xl p-5 mb-6 space-y-4">
           <input
             autoFocus
             type="text"
             placeholder="Assignment title..."
             value={newAssignment.title}
             onChange={(e) => setNewAssignment({ ...newAssignment, title: e.target.value })}
-            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500"
+            className="w-full glass-input rounded-xl px-4 py-2.5 text-white placeholder-zinc-500 text-sm focus:outline-none"
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <input
@@ -313,13 +332,20 @@ export default function Assignments() {
               placeholder="Subject / Class name"
               value={newAssignment.subject ?? ''}
               onChange={(e) => setNewAssignment({ ...newAssignment, subject: e.target.value })}
-              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              className="w-full glass-input rounded-xl px-3.5 py-2 text-white placeholder-zinc-500 text-sm focus:outline-none"
             />
             <input
               type="datetime-local"
-              value={newAssignment.deadline ? new Date(newAssignment.deadline).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setNewAssignment({ ...newAssignment, deadline: e.target.value ? new Date(e.target.value).toISOString() : null })}
-              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50 [color-scheme:dark]"
+              value={toLocalInputString(newAssignment.deadline)}
+              onChange={(e) => {
+                if (!e.target.value) {
+                  setNewAssignment({ ...newAssignment, deadline: null });
+                  return;
+                }
+                const local = new Date(e.target.value);
+                setNewAssignment({ ...newAssignment, deadline: local.toISOString() });
+              }}
+              className="w-full glass-input rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none [color-scheme:dark]"
             />
           </div>
           <input
@@ -327,34 +353,35 @@ export default function Assignments() {
             placeholder="Reference material URL (optional)"
             value={newAssignment.attachment_url ?? ''}
             onChange={(e) => setNewAssignment({ ...newAssignment, attachment_url: e.target.value })}
-            className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+            className="w-full glass-input rounded-xl px-4 py-2 text-white placeholder-zinc-500 text-sm focus:outline-none"
           />
           <button
             type="submit"
-            className="w-full bg-teal-500 hover:bg-teal-400 text-white font-medium py-2.5 rounded-lg transition-all text-sm"
+            className="w-full bg-gradient-to-b from-indigo-500 to-indigo-600 hover:brightness-110 text-white font-medium py-2.5 rounded-xl transition-all text-xs shadow-md shadow-indigo-500/20"
           >
             Add Assignment
           </button>
         </form>
       )}
 
+      {/* Main Assignment List */}
       {loading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 text-teal-400 animate-spin" />
+          <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
         </div>
       ) : assignments.length === 0 ? (
         <div className="text-center py-16">
-          <GraduationCap className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-          <p className="text-slate-500">No assignments yet. Add one manually or import from your calendar!</p>
+          <GraduationCap className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+          <p className="text-zinc-500 text-sm">No assignments found. Sync with Teams or add one above!</p>
         </div>
       ) : (
-        <div className="space-y-2">
-         {assignments.map((assignment) => (
+        <div className="space-y-2.5">
+          {assignments.map((assignment) => (
             <div
               key={assignment.id}
-              className="glass-panel hover:border-white/[0.14] rounded-2xl p-4.5 transition-all duration-200 active:scale-[0.99] flex flex-col gap-3 group"
+              className="glass-panel hover:border-white/[0.14] rounded-2xl p-4 transition-all duration-200 active:scale-[0.99] flex flex-col gap-3 group"
             >
-              {/* Top Row: Subject Pill + Due Date Badge */}
+              {/* Top Row */}
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
@@ -366,12 +393,7 @@ export default function Assignments() {
                 {assignment.deadline && (
                   <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-zinc-800/80 border border-white/[0.06] text-zinc-300 flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-zinc-400" />
-                    {new Date(assignment.deadline).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {formatDeadline(assignment.deadline)}
                   </span>
                 )}
               </div>
@@ -383,7 +405,7 @@ export default function Assignments() {
                 </h3>
               </div>
 
-              {/* Bottom Row: Status Segment Controls + Delete */}
+              {/* Bottom Action Bar */}
               <div className="flex items-center justify-between pt-2 border-t border-white/[0.04]">
                 <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.05]">
                   {(['pending', 'in_progress', 'submitted', 'graded'] as const).map((st) => (
@@ -412,28 +434,7 @@ export default function Assignments() {
                 </button>
               </div>
             </div>
-
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-700/40">
-                  <div className="flex gap-1">
-                    {(['pending', 'in_progress', 'submitted', 'graded'] as const).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => handleStatusChange(assignment.id, s)}
-                        className={`text-xs px-2.5 py-1 rounded-md transition-all ${
-                          assignment.status === s
-                            ? `${statusConfig[s].bg} ${statusConfig[s].border} ${statusConfig[s].color} border`
-                            : 'text-slate-500 hover:text-slate-300'
-                        }`}
-                      >
-                        {assignment.status === s && <CheckCircle2 className="w-3 h-3 inline mr-1" />}
-                        {statusConfig[s].label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          ))}
         </div>
       )}
     </div>
