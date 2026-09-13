@@ -349,60 +349,69 @@ export default function Assignments() {
         </div>
       ) : (
         <div className="space-y-2">
-          {assignments.map((assignment) => {
-            const sc = statusConfig[assignment.status];
-            const overdue = isOverdue(assignment.deadline, assignment.status);
-            return (
-              <div
-                key={assignment.id}
-                className="group bg-slate-800/40 backdrop-blur border border-slate-700/40 rounded-xl p-4 transition-all hover:border-slate-600/60"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {assignment.source === 'calendar' && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
-                          <Calendar className="w-2.5 h-2.5" />
-                          Imported
-                        </span>
-                      )}
-                      <h3 className="text-white font-medium truncate">{assignment.title}</h3>
-                    </div>
-                    {assignment.subject && (
-                      <p className="text-slate-400 text-sm flex items-center gap-1 mb-1">
-                        <BookOpen className="w-3.5 h-3.5" />
-                        {assignment.subject}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {assignment.deadline && (
-                        <span className={`text-xs px-2 py-0.5 rounded-md flex items-center gap-1 ${
-                          overdue ? 'bg-red-500/10 text-red-400 border border-red-500/30' : 'bg-slate-700/50 text-slate-300'
-                        }`}>
-                          <Clock className="w-3 h-3" />
-                          {formatDeadline(assignment.deadline)}
-                        </span>
-                      )}
-                      {assignment.attachment_url && (
-                        <a
-                          href={assignment.attachment_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center gap-1 hover:bg-blue-500/20 transition-all"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Reference
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(assignment.id)}
-                    className="shrink-0 p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+         {assignments.map((assignment) => (
+            <div
+              key={assignment.id}
+              className="glass-panel hover:border-white/[0.14] rounded-2xl p-4.5 transition-all duration-200 active:scale-[0.99] flex flex-col gap-3 group"
+            >
+              {/* Top Row: Subject Pill + Due Date Badge */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 truncate">
+                    {assignment.subject || 'Assignment'}
+                  </span>
                 </div>
+
+                {assignment.deadline && (
+                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-zinc-800/80 border border-white/[0.06] text-zinc-300 flex items-center gap-1.5">
+                    <Clock className="w-3 h-3 text-zinc-400" />
+                    {new Date(assignment.deadline).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                )}
+              </div>
+
+              {/* Title */}
+              <div>
+                <h3 className="text-white font-medium text-[15px] leading-snug tracking-tight group-hover:text-indigo-200 transition-colors">
+                  {assignment.title}
+                </h3>
+              </div>
+
+              {/* Bottom Row: Status Segment Controls + Delete */}
+              <div className="flex items-center justify-between pt-2 border-t border-white/[0.04]">
+                <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.05]">
+                  {(['pending', 'in_progress', 'submitted', 'graded'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => handleStatusChange(assignment.id, st)}
+                      className={`text-[10px] font-medium px-2.5 py-1 rounded-lg capitalize transition-all ${
+                        assignment.status === st
+                          ? 'bg-zinc-800 text-white shadow-sm font-semibold'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {st.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleDelete(assignment.id)}
+                  className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  title="Delete assignment"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-700/40">
                   <div className="flex gap-1">
