@@ -123,14 +123,15 @@ export default function Tasks() {
   };
 
   const handleStatusChange = async (task: Task, status: TaskStatus) => {
-    if (isGuest) {
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
-      return;
-    }
-    const { error } = await supabase.from('tasks').update({ status }).eq('id', task.id);
-    if (error) {
-      console.error('Failed to update task:', error.message);
-      return;
+    // 1. Instantly update UI on screen
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+
+    // 2. Sync to Supabase in the background
+    if (!isGuest) {
+      const { error } = await supabase.from('tasks').update({ status }).eq('id', task.id);
+      if (error) {
+        console.error('Failed to update task:', error.message);
+      }
     }
   };
 
@@ -139,14 +140,15 @@ export default function Tasks() {
   };
 
   const handleDelete = async (id: string) => {
-    if (isGuest) {
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-      return;
-    }
-    const { error } = await supabase.from('tasks').delete().eq('id', id);
-    if (error) {
-      console.error('Failed to delete task:', error.message);
-      return;
+    // 1. Instantly remove from screen
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+
+    // 2. Sync deletion to Supabase
+    if (!isGuest) {
+      const { error } = await supabase.from('tasks').delete().eq('id', id);
+      if (error) {
+        console.error('Failed to delete task:', error.message);
+      }
     }
   };
 
