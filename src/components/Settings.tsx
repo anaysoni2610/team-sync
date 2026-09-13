@@ -136,6 +136,25 @@ export default function Settings() {
               <p className="text-white">{user?.email}</p>
             </div>
           </div>
+          <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-700/30">
+            <div>
+              <p className="text-sm text-slate-400">Personal Sync ID</p>
+              <p className="text-xs font-mono text-teal-300 truncate max-w-[200px] md:max-w-xs">
+                {user?.id || 'Login to view'}
+              </p>
+            </div>
+            {user?.id && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(user.id);
+                  alert('Sync ID copied to clipboard!');
+                }}
+                className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-all"
+              >
+                Copy ID
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <Shield className="w-4 h-4 text-slate-500" />
             <div>
