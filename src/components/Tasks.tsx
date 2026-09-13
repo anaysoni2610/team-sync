@@ -17,6 +17,7 @@ function formatDate(dateStr: string | null): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+
 function toLocalInputString(isoStr: string | null): string {
   if (!isoStr) return '';
   const d = new Date(isoStr);
@@ -81,25 +82,29 @@ export default function Tasks() {
     const channel = supabase
       .channel('tasks-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, (payload) => {
+        const item = payload.new as Task;
+        if (item.user_id && item.user_id !== user?.id) return;
         setTasks((prev) => {
-          if (prev.some((t) => t.id === payload.new.id)) return prev;
-          return [payload.new as Task, ...prev];
+          if (prev.some((t) => t.id === item.id)) return prev;
+          return [item, ...prev];
         });
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, (payload) => {
-      setTasks((prev) => prev.map((t) => (t.id === payload.new.id ? (payload.new as any) : t)));
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' }, (payload) => {
-      setTasks((prev) => prev.filter((t) => t.id !== (payload.old as any).id));
-    })
-    .subscribe();
+        const item = payload.new as any;
+        if (item.user_id && item.user_id !== user?.id) return;
+        setTasks((prev) => prev.map((t) => (t.id === item.id ? item : t)));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' }, (payload) => {
+        setTasks((prev) => prev.filter((t) => t.id !== (payload.old as any).id));
+      })
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchTasks, isGuest]);
+  }, [fetchTasks, isGuest, user?.id]);
 
- const handleAdd = async (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title.trim()) return;
 
@@ -127,7 +132,6 @@ export default function Tasks() {
       user_id: user?.id,
     };
 
-    // Insert into Supabase and get the created row back immediately
     const { data, error } = await supabase
       .from('tasks')
       .insert(payload)
@@ -139,7 +143,6 @@ export default function Tasks() {
       return;
     }
 
-    // Instantly show the new task at the top of your list
     if (data) {
       setTasks((prev) => {
         if (prev.some((t) => t.id === data.id)) return prev;
@@ -152,10 +155,8 @@ export default function Tasks() {
   };
 
   const handleStatusChange = async (task: Task, status: TaskStatus) => {
-    // 1. Instantly update UI on screen
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
 
-    // 2. Sync to Supabase in the background
     if (!isGuest) {
       const { error } = await supabase.from('tasks').update({ status }).eq('id', task.id);
       if (error) {
@@ -169,10 +170,8 @@ export default function Tasks() {
   };
 
   const handleDelete = async (id: string) => {
-    // 1. Instantly remove from screen
     setTasks((prev) => prev.filter((t) => t.id !== id));
 
-    // 2. Sync deletion to Supabase
     if (!isGuest) {
       const { error } = await supabase.from('tasks').delete().eq('id', id);
       if (error) {
@@ -231,18 +230,18 @@ export default function Tasks() {
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Due Date</label>
             <input
-  type="datetime-local"
-  value={toLocalInputString(newTask.due_date)}
-  onChange={(e) => {
-    if (!e.target.value) {
-      setNewTask({ ...newTask, due_date: null });
-      return;
-    }
-    const localDate = new Date(e.target.value);
-    setNewTask({ ...newTask, due_date: localDate.toISOString() });
-  }}
-  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50 [color-scheme:dark]"
-/>
+              type="datetime-local"
+              value={toLocalInputString(newTask.due_date)}
+              onChange={(e) => {
+                if (!e.target.value) {
+                  setNewTask({ ...newTask, due_date: null });
+                  return;
+                }
+                const localDate = new Date(e.target.value);
+                setNewTask({ ...newTask, due_date: localDate.toISOString() });
+              }}
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50 [color-scheme:dark]"
+            />
           </div>
           <button
             type="submit"
