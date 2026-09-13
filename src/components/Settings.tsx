@@ -16,6 +16,44 @@ export default function Settings() {
   const [importResult, setImportResult] = useState<string | null>(null);
   const [newFeed, setNewFeed] = useState({ name: '', feed_url: '' });
 
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordStatus(null);
+
+    if (isGuest) {
+      setPasswordStatus({ type: 'error', message: 'Password change is not available in Guest mode.' });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordStatus({ type: 'error', message: 'Password must be at least 6 characters long.' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus({ type: 'error', message: 'Passwords do not match.' });
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      setPasswordStatus({ type: 'success', message: 'Password updated successfully!' });
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      setPasswordStatus({ type: 'error', message: err.message || 'Failed to update password.' });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
   const fetchFeeds = useCallback(async () => {
     if (isGuest) {
       setLoading(false);
