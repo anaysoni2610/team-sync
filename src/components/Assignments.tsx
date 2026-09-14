@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase, type Assignment, type NewAssignment, type AssignmentStatus } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  Plus, Trash2, Clock, BookOpen, ExternalLink,
-  X, Loader2, GraduationCap, RefreshCw, CheckCircle2, Calendar,
+  Plus, Trash2, Clock, ExternalLink,
+  X, Loader2, GraduationCap, RefreshCw, CheckCircle2,
+  Calendar, AlertTriangle, Check, ArrowUpRight
 } from 'lucide-react';
 
 function toLocalInputString(isoStr: string | null): string {
@@ -56,9 +57,9 @@ export default function Assignments() {
   const fetchAssignments = useCallback(async () => {
     if (isGuest) {
       setAssignments([
-        { id: 'demo-a1', title: 'Math Problem Set 4', subject: 'Mathematics', deadline: new Date(Date.now() + 172800000).toISOString(), attachment_url: null, status: 'pending', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-a2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 432000000).toISOString(), attachment_url: 'https://example.com/lab-guide.pdf', status: 'in_progress', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-a3', title: 'History Essay Draft', subject: 'History', deadline: new Date(Date.now() + 604800000).toISOString(), attachment_url: null, status: 'pending', source: 'manual', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-a1', title: 'Math Problem Set 4', subject: 'Mathematics', deadline: new Date(Date.now() - 86400000).toISOString(), attachment_url: null, status: 'pending', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-a2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 172800000).toISOString(), attachment_url: null, status: 'in_progress', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-a3', title: 'History Essay Draft', subject: 'History', deadline: new Date(Date.now() + 432000000).toISOString(), attachment_url: null, status: 'submitted', source: 'manual', user_id: 'guest', created_at: new Date().toISOString() },
       ]);
       setLoading(false);
       return;
@@ -240,26 +241,28 @@ export default function Assignments() {
     setSyncing(false);
   };
 
-  const pendingCount = assignments.filter((a) => a.status === 'pending' || a.status === 'in_progress').length;
-  const overdueCount = assignments.filter((a) => isOverdue(a.deadline, a.status)).length;
+  // Split assignments into Overdue Alerts, Pending, and Completed
+  const overdueList = assignments.filter((a) => isOverdue(a.deadline, a.status));
+  const pendingList = assignments.filter((a) => !isOverdue(a.deadline, a.status) && a.status !== 'submitted' && a.status !== 'graded');
+  const completedList = assignments.filter((a) => a.status === 'submitted' || a.status === 'graded');
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+      {/* Top Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2 tracking-tight">
             <GraduationCap className="w-6 h-6 text-indigo-400" />
             Assignments
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            {pendingCount} pending{overdueCount > 0 && ` · ${overdueCount} overdue`}
+            {pendingList.length + overdueList.length} active coursework · {completedList.length} submitted
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowImport(!showImport)}
-            className="bg-zinc-800/60 hover:bg-zinc-700/60 text-zinc-300 border border-white/[0.06] px-3.5 py-2 rounded-xl font-medium text-xs flex items-center gap-2 transition-all active:scale-95"
+            className="bg-zinc-850 hover:bg-zinc-800 text-zinc-300 border border-white/[0.06] px-3.5 py-2 rounded-xl font-medium text-xs flex items-center gap-2 transition-all active:scale-95"
           >
             {showImport ? <X className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
             {showImport ? 'Cancel' : 'Import'}
@@ -269,16 +272,16 @@ export default function Assignments() {
             className="bg-gradient-to-b from-indigo-500 to-indigo-600 hover:brightness-110 text-white px-4 py-2 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all shadow-[0_4px_14px_rgba(99,102,241,0.35)] active:scale-95"
           >
             {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showForm ? 'Cancel' : 'Add'}
+            {showForm ? 'Cancel' : 'New Assignment'}
           </button>
         </div>
       </div>
 
-      {/* Calendar Import Card */}
+      {/* Import Calendar Drawer */}
       {showImport && (
-        <form onSubmit={handleImportCalendar} className="glass-panel rounded-2xl p-5 mb-6 space-y-4">
+        <form onSubmit={handleImportCalendar} className="glass-panel rounded-3xl p-5 space-y-4">
           <div>
-            <label className="text-xs text-zinc-400 mb-1 block">Calendar Name (optional)</label>
+            <label className="text-xs text-zinc-400 mb-1 block">Calendar Title (optional)</label>
             <input
               autoFocus
               type="text"
@@ -317,7 +320,7 @@ export default function Assignments() {
 
       {/* Manual Creation Form */}
       {showForm && (
-        <form onSubmit={handleAdd} className="glass-panel rounded-2xl p-5 mb-6 space-y-4">
+        <form onSubmit={handleAdd} className="glass-panel rounded-3xl p-5 space-y-4">
           <input
             autoFocus
             type="text"
@@ -364,78 +367,203 @@ export default function Assignments() {
         </form>
       )}
 
-      {/* Main Assignment List */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+      {/* ========================================================================= */}
+      {/* 1. OVERDUE ALERTS SECTION (Only appears when items are past due)         */}
+      {/* ========================================================================= */}
+      {overdueList.length > 0 && (
+        <section className="p-4.5 rounded-3xl bg-rose-500/[0.06] border border-rose-500/30 shadow-[0_0_24px_rgba(244,63,94,0.12)] space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-rose-400">
+              <div className="p-1.5 rounded-lg bg-rose-500/20 border border-rose-500/30 animate-pulse">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <h2 className="text-sm font-semibold tracking-tight text-rose-300">
+                Overdue Alerts ({overdueList.length})
+              </h2>
+            </div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-rose-400/80 font-medium">
+              Immediate Attention
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {overdueList.map((item) => (
+              <div
+                key={item.id}
+                className="glass-panel border-rose-500/25 bg-black/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 group"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      {item.subject || 'Coursework'}
+                    </span>
+                    <span className="text-[11px] text-rose-400 font-mono flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatDeadline(item.deadline)}
+                    </span>
+                  </div>
+                  <p className="text-white text-sm font-medium mt-1 truncate">{item.title}</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleStatusChange(item.id, 'submitted')}
+                    className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-xs transition-all active:scale-95 flex items-center gap-1 shadow-md shadow-rose-500/30"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Mark Done
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="p-1.5 rounded-xl text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. PENDING COURSEWORK SUBSECTION                                          */}
+      {/* ========================================================================= */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-xs font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+            Pending Coursework ({pendingList.length})
+          </h2>
         </div>
-      ) : assignments.length === 0 ? (
-        <div className="text-center py-16">
-          <GraduationCap className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No assignments found. Sync with Teams or add one above!</p>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {assignments.map((assignment) => (
-            <div
-              key={assignment.id}
-              className="glass-panel hover:border-white/[0.14] rounded-2xl p-4 transition-all duration-200 active:scale-[0.99] flex flex-col gap-3 group"
-            >
-              {/* Top Row */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-                  <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 truncate">
+
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+          </div>
+        ) : pendingList.length === 0 ? (
+          <div className="text-center py-10 glass-panel rounded-3xl border-dashed">
+            <GraduationCap className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+            <p className="text-zinc-400 text-xs font-medium">All active coursework clear</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {pendingList.map((assignment) => (
+              <div
+                key={assignment.id}
+                className="glass-panel hover:border-white/[0.14] rounded-2xl p-4 transition-all duration-200 active:scale-[0.99] flex flex-col gap-3 group"
+              >
+                {/* Subject & Deadline */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 truncate">
+                      {assignment.subject || 'Assignment'}
+                    </span>
+                  </div>
+
+                  {assignment.deadline && (
+                    <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-zinc-800/80 border border-white/[0.06] text-zinc-300 flex items-center gap-1.5">
+                      <Clock className="w-3 h-3 text-zinc-400" />
+                      {formatDeadline(assignment.deadline)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Title */}
+                <div>
+                  <h3 className="text-white font-medium text-[15px] leading-snug tracking-tight group-hover:text-indigo-200 transition-colors">
+                    {assignment.title}
+                  </h3>
+                </div>
+
+                {/* Status Switcher */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/[0.04]">
+                  <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.05]">
+                    {(['pending', 'in_progress', 'submitted', 'graded'] as const).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => handleStatusChange(assignment.id, st)}
+                        className={`text-[10px] font-medium px-2.5 py-1 rounded-lg capitalize transition-all ${
+                          assignment.status === st
+                            ? 'bg-zinc-800 text-white shadow-sm font-semibold'
+                            : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {st.replace('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(assignment.id)}
+                    className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 3. COMPLETED & ARCHIVED SUBSECTION                                        */}
+      {/* ========================================================================= */}
+      {completedList.length > 0 && (
+        <section className="space-y-3 pt-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Completed & Submitted ({completedList.length})
+            </h2>
+          </div>
+
+          <div className="space-y-2.5">
+            {completedList.map((assignment) => (
+              <div
+                key={assignment.id}
+                className="glass-panel bg-black/25 opacity-70 hover:opacity-100 rounded-2xl p-4 transition-all duration-200 flex flex-col gap-2 group"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-400/80">
                     {assignment.subject || 'Assignment'}
                   </span>
+                  <span className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    {assignment.status}
+                  </span>
                 </div>
 
-                {assignment.deadline && (
-                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-zinc-800/80 border border-white/[0.06] text-zinc-300 flex items-center gap-1.5">
-                    <Clock className="w-3 h-3 text-zinc-400" />
-                    {formatDeadline(assignment.deadline)}
-                  </span>
-                )}
-              </div>
-
-              {/* Title */}
-              <div>
-                <h3 className="text-white font-medium text-[15px] leading-snug tracking-tight group-hover:text-indigo-200 transition-colors">
+                <h3 className="text-zinc-300 line-through font-normal text-sm">
                   {assignment.title}
                 </h3>
-              </div>
 
-              {/* Bottom Action Bar */}
-              <div className="flex items-center justify-between pt-2 border-t border-white/[0.04]">
-                <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.05]">
-                  {(['pending', 'in_progress', 'submitted', 'graded'] as const).map((st) => (
+                <div className="flex items-center justify-between pt-1 text-xs text-zinc-500">
+                  <span className="text-[11px]">
+                    Completed
+                  </span>
+                  <div className="flex items-center gap-2">
                     <button
-                      key={st}
-                      type="button"
-                      onClick={() => handleStatusChange(assignment.id, st)}
-                      className={`text-[10px] font-medium px-2.5 py-1 rounded-lg capitalize transition-all ${
-                        assignment.status === st
-                          ? 'bg-zinc-800 text-white shadow-sm font-semibold'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
+                      onClick={() => handleStatusChange(assignment.id, 'pending')}
+                      className="text-[11px] text-zinc-400 hover:text-white transition-colors"
                     >
-                      {st.replace('_', ' ')}
+                      Revert to Pending
                     </button>
-                  ))}
+                    <button
+                      onClick={() => handleDelete(assignment.id)}
+                      className="p-1 rounded text-zinc-600 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleDelete(assignment.id)}
-                  className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                  title="Delete assignment"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );
