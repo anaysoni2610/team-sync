@@ -11,7 +11,6 @@ import {
   X,
   Sparkles,
   GraduationCap,
-  AlertTriangle
 } from 'lucide-react';
 
 export default function Agenda() {
@@ -28,7 +27,8 @@ export default function Agenda() {
     if (isGuest) {
       setAssignments([
         { id: 'demo-1', title: 'Math Problem Set 4', subject: 'Mathematics', deadline: new Date(Date.now() - 86400000).toISOString(), attachment_url: null, status: 'pending', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 86400000).toISOString(), attachment_url: null, status: 'submitted', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 86400000).toISOString(), attachment_url: null, status: 'in_progress', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-3', title: 'History Essay Draft', subject: 'History', deadline: new Date(Date.now() + 172800000).toISOString(), attachment_url: null, status: 'submitted', source: 'manual', user_id: 'guest', created_at: new Date().toISOString() },
       ]);
       setTasks([
         { id: 'demo-t1', title: 'Review lecture notes', description: null, due_date: new Date(Date.now() + 86400000).toISOString(), status: 'pending', user_id: 'guest', created_at: new Date().toISOString() },
@@ -97,11 +97,14 @@ export default function Agenda() {
     const hasOverdue = dayAssignments.some(
       (a) => (a.status !== 'submitted' && a.status !== 'graded') && new Date(a.deadline!) < now
     );
-    const allCompleted = dayAssignments.length > 0 && dayAssignments.every(
-      (a) => a.status === 'submitted' || a.status === 'graded'
+    const hasInProgress = dayAssignments.some(
+      (a) => a.status === 'in_progress'
     );
     const hasPending = dayAssignments.some(
-      (a) => a.status === 'pending' || a.status === 'in_progress'
+      (a) => a.status === 'pending'
+    );
+    const allCompleted = dayAssignments.length > 0 && dayAssignments.every(
+      (a) => a.status === 'submitted' || a.status === 'graded'
     );
 
     return {
@@ -109,8 +112,9 @@ export default function Agenda() {
       tasks: dayTasks,
       total: dayAssignments.length + dayTasks.length,
       hasOverdue,
+      hasInProgress,
+      hasPending,
       allCompleted,
-      hasPending
     };
   };
 
@@ -138,7 +142,7 @@ export default function Agenda() {
             Agenda
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Color-coded calendar sync: emerald for submitted, rose for past due, amber for pending
+            Dynamic calendar tracking: sky for in progress, amber for pending, rose for overdue, emerald for done
           </p>
         </div>
       </div>
@@ -197,7 +201,7 @@ export default function Agenda() {
             const dayNum = i + 1;
             const thisDate = new Date(year, month, dayNum);
             const isToday = isSameDay(thisDate, today);
-            const { total, hasOverdue, allCompleted, hasPending, tasks: dayT } = getDayAnalytics(dayNum);
+            const { total, hasOverdue, hasInProgress, hasPending, allCompleted, tasks: dayT } = getDayAnalytics(dayNum);
 
             return (
               <button
@@ -219,34 +223,46 @@ export default function Agenda() {
                   {dayNum}
                 </span>
 
-                {/* Adaptive Status Color Indicators */}
+                {/* Status Color Indicators */}
                 {total > 0 && (
                   <div className="flex items-center gap-1 mt-auto pb-0.5">
-                    {/* Assignment Indicator with Dynamic Color Coding */}
+                    {/* 1. Overdue takes top priority */}
                     {hasOverdue && (
                       <span
                         className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse"
                         title="Overdue coursework"
                       />
                     )}
-                    {!hasOverdue && allCompleted && (
+
+                    {/* 2. In Progress (Sky Blue) */}
+                    {!hasOverdue && hasInProgress && (
                       <span
-                        className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
-                        title="All coursework submitted"
+                        className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]"
+                        title="Coursework in progress"
                       />
                     )}
-                    {!hasOverdue && !allCompleted && hasPending && (
+
+                    {/* 3. Pending (Amber) */}
+                    {!hasOverdue && !hasInProgress && hasPending && (
                       <span
                         className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
                         title="Pending coursework"
                       />
                     )}
 
-                    {/* Task Indicator */}
+                    {/* 4. Completed (Emerald) */}
+                    {!hasOverdue && !hasInProgress && !hasPending && allCompleted && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                        title="All coursework completed"
+                      />
+                    )}
+
+                    {/* 5. Custom Tasks (Indigo) */}
                     {dayT.length > 0 && (
                       <span
                         className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.6)]"
-                        title="Scheduled tasks"
+                        title="Tasks scheduled"
                       />
                     )}
                   </div>
@@ -303,7 +319,7 @@ export default function Agenda() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Coursework with Dynamic Visual Status */}
+                {/* Coursework with Specific In-Progress Styling */}
                 {selectedDayItems.assignments.length > 0 && (
                   <div>
                     <h4 className="text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -314,6 +330,7 @@ export default function Agenda() {
                       {selectedDayItems.assignments.map((item) => {
                         const isDone = item.status === 'submitted' || item.status === 'graded';
                         const isPast = item.deadline && new Date(item.deadline) < new Date() && !isDone;
+                        const isInProgress = item.status === 'in_progress';
 
                         return (
                           <div
@@ -323,6 +340,8 @@ export default function Agenda() {
                                 ? 'bg-emerald-500/[0.04] border-emerald-500/20'
                                 : isPast
                                 ? 'bg-rose-500/[0.05] border-rose-500/30'
+                                : isInProgress
+                                ? 'bg-sky-500/[0.05] border-sky-500/30'
                                 : 'bg-black/30 border-white/[0.06]'
                             }`}
                           >
@@ -337,10 +356,12 @@ export default function Agenda() {
                                     ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
                                     : isPast
                                     ? 'text-rose-400 bg-rose-500/10 border-rose-500/25'
+                                    : isInProgress
+                                    ? 'text-sky-400 bg-sky-500/10 border-sky-500/25'
                                     : 'text-amber-400 bg-amber-400/10 border-amber-400/20'
                                 }`}
                               >
-                                {isPast ? 'Overdue' : item.status}
+                                {isPast ? 'Overdue' : item.status.replace('_', ' ')}
                               </span>
                             </div>
 
@@ -351,6 +372,7 @@ export default function Agenda() {
                             {item.deadline && (
                               <p className="text-xs text-zinc-400 flex items-center gap-1 font-mono mt-0.5">
                                 <Clock className="w-3 h-3 text-zinc-500" />
+                                Due at{' '}
                                 {new Date(item.deadline).toLocaleTimeString('en-US', {
                                   hour: '2-digit',
                                   minute: '2-digit'
