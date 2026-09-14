@@ -6,12 +6,12 @@ import {
   ChevronRight,
   CalendarDays,
   Clock,
-  BookOpen,
   CheckCircle2,
   Circle,
   X,
   Sparkles,
   GraduationCap,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function Agenda() {
@@ -27,8 +27,8 @@ export default function Agenda() {
   const fetchData = useCallback(async () => {
     if (isGuest) {
       setAssignments([
-        { id: 'demo-1', title: 'Math Problem Set 4', subject: 'Mathematics', deadline: new Date(Date.now() + 86400000).toISOString(), attachment_url: null, status: 'pending', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 259200000).toISOString(), attachment_url: null, status: 'in_progress', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-1', title: 'Math Problem Set 4', subject: 'Mathematics', deadline: new Date(Date.now() - 86400000).toISOString(), attachment_url: null, status: 'pending', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
+        { id: 'demo-2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 86400000).toISOString(), attachment_url: null, status: 'submitted', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
       ]);
       setTasks([
         { id: 'demo-t1', title: 'Review lecture notes', description: null, due_date: new Date(Date.now() + 86400000).toISOString(), status: 'pending', user_id: 'guest', created_at: new Date().toISOString() },
@@ -80,7 +80,7 @@ export default function Agenda() {
     );
   };
 
-  const getItemsForDay = (day: number) => {
+  const getDayAnalytics = (day: number) => {
     const targetDate = new Date(year, month, day);
 
     const dayAssignments = assignments.filter((a) => {
@@ -93,7 +93,25 @@ export default function Agenda() {
       return isSameDay(new Date(t.due_date), targetDate);
     });
 
-    return { assignments: dayAssignments, tasks: dayTasks, total: dayAssignments.length + dayTasks.length };
+    const now = new Date();
+    const hasOverdue = dayAssignments.some(
+      (a) => (a.status !== 'submitted' && a.status !== 'graded') && new Date(a.deadline!) < now
+    );
+    const allCompleted = dayAssignments.length > 0 && dayAssignments.every(
+      (a) => a.status === 'submitted' || a.status === 'graded'
+    );
+    const hasPending = dayAssignments.some(
+      (a) => a.status === 'pending' || a.status === 'in_progress'
+    );
+
+    return {
+      assignments: dayAssignments,
+      tasks: dayTasks,
+      total: dayAssignments.length + dayTasks.length,
+      hasOverdue,
+      allCompleted,
+      hasPending
+    };
   };
 
   const selectedDayItems = useMemo(() => {
@@ -120,7 +138,7 @@ export default function Agenda() {
             Agenda
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Tap any date to inspect scheduled coursework and tasks
+            Color-coded calendar sync: emerald for submitted, rose for past due, amber for pending
           </p>
         </div>
       </div>
@@ -139,7 +157,7 @@ export default function Agenda() {
           <div className="flex items-center gap-2">
             <button
               onClick={goToToday}
-              className="text-xs px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 font-medium border border-white/[0.06] transition-all active:scale-95"
+              className="text-xs px-3 py-1.5 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 font-medium border border-white/[0.06] transition-all active:scale-95"
             >
               Today
             </button>
@@ -179,7 +197,7 @@ export default function Agenda() {
             const dayNum = i + 1;
             const thisDate = new Date(year, month, dayNum);
             const isToday = isSameDay(thisDate, today);
-            const { assignments: dayA, tasks: dayT, total } = getItemsForDay(dayNum);
+            const { total, hasOverdue, allCompleted, hasPending, tasks: dayT } = getDayAnalytics(dayNum);
 
             return (
               <button
@@ -201,14 +219,35 @@ export default function Agenda() {
                   {dayNum}
                 </span>
 
-                {/* Event Indicators */}
+                {/* Adaptive Status Color Indicators */}
                 {total > 0 && (
                   <div className="flex items-center gap-1 mt-auto pb-0.5">
-                    {dayA.length > 0 && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
+                    {/* Assignment Indicator with Dynamic Color Coding */}
+                    {hasOverdue && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse"
+                        title="Overdue coursework"
+                      />
                     )}
+                    {!hasOverdue && allCompleted && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                        title="All coursework submitted"
+                      />
+                    )}
+                    {!hasOverdue && !allCompleted && hasPending && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+                        title="Pending coursework"
+                      />
+                    )}
+
+                    {/* Task Indicator */}
                     {dayT.length > 0 && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.6)]" />
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.6)]"
+                        title="Scheduled tasks"
+                      />
                     )}
                   </div>
                 )}
@@ -216,36 +255,6 @@ export default function Agenda() {
             );
           })}
         </div>
-      </div>
-
-      {/* Upcoming Section Under Calendar */}
-      <div className="glass-panel rounded-3xl p-5 shadow-xl">
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2 mb-4 tracking-tight">
-          <Clock className="w-4 h-4 text-indigo-400" />
-          Next Up on Your Radar
-        </h3>
-        {assignments.length === 0 && tasks.length === 0 ? (
-          <p className="text-zinc-500 text-xs py-2">No upcoming assignments or tasks found.</p>
-        ) : (
-          <div className="space-y-2.5">
-            {assignments.slice(0, 3).map((a) => (
-              <div
-                key={a.id}
-                className="flex items-center gap-3.5 p-3.5 bg-black/30 border border-white/[0.05] rounded-2xl hover:border-white/[0.1] transition-all"
-              >
-                <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400">
-                  <GraduationCap className="w-4 h-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-zinc-100 text-sm font-medium truncate">{a.title}</p>
-                  <p className="text-zinc-400 text-xs mt-0.5 truncate">
-                    {a.subject || 'Assignment'} · {a.deadline ? new Date(a.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'No due date'}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ========================================================================= */}
@@ -259,7 +268,6 @@ export default function Agenda() {
           />
 
           <div className="relative w-full max-w-lg bg-[#0e1017] border border-white/[0.09] rounded-t-[32px] sm:rounded-3xl p-6 shadow-2xl z-10 max-h-[85vh] overflow-y-auto transform transition-all duration-300 animate-in slide-in-from-bottom-8 sm:zoom-in-95">
-            {/* Grab Handle */}
             <div className="w-12 h-1 bg-zinc-700/80 rounded-full mx-auto mb-5 sm:hidden" />
 
             {/* Header */}
@@ -284,7 +292,7 @@ export default function Agenda() {
               </button>
             </div>
 
-            {/* Content */}
+            {/* Content List */}
             {selectedDayItems.total === 0 ? (
               <div className="text-center py-12 border border-dashed border-white/[0.06] rounded-2xl bg-black/20">
                 <Sparkles className="w-8 h-8 text-indigo-400/60 mx-auto mb-2" />
@@ -295,40 +303,63 @@ export default function Agenda() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Assignments */}
+                {/* Coursework with Dynamic Visual Status */}
                 {selectedDayItems.assignments.length > 0 && (
                   <div>
-                    <h4 className="text-[11px] font-mono font-semibold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <GraduationCap className="w-3.5 h-3.5" />
+                    <h4 className="text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
                       Teams Assignments ({selectedDayItems.assignments.length})
                     </h4>
                     <div className="space-y-2">
-                      {selectedDayItems.assignments.map((item) => (
-                        <div
-                          key={item.id}
-                          className="bg-black/30 border border-white/[0.06] rounded-2xl p-4 flex flex-col gap-1.5"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono font-medium truncate max-w-[200px]">
-                              {item.subject || 'Coursework'}
-                            </span>
-                            <span className="text-[10px] uppercase tracking-wider text-amber-400 font-medium bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-                              {item.status}
-                            </span>
-                          </div>
-                          <p className="text-zinc-100 font-medium text-sm">{item.title}</p>
-                          {item.deadline && (
-                            <p className="text-xs text-zinc-400 flex items-center gap-1 font-mono">
-                              <Clock className="w-3 h-3 text-zinc-500" />
-                              Due at{' '}
-                              {new Date(item.deadline).toLocaleTimeString('en-US', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                      {selectedDayItems.assignments.map((item) => {
+                        const isDone = item.status === 'submitted' || item.status === 'graded';
+                        const isPast = item.deadline && new Date(item.deadline) < new Date() && !isDone;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`border rounded-2xl p-4 flex flex-col gap-1.5 transition-all ${
+                              isDone
+                                ? 'bg-emerald-500/[0.04] border-emerald-500/20'
+                                : isPast
+                                ? 'bg-rose-500/[0.05] border-rose-500/30'
+                                : 'bg-black/30 border-white/[0.06]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono font-medium truncate max-w-[200px]">
+                                {item.subject || 'Coursework'}
+                              </span>
+
+                              <span
+                                className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${
+                                  isDone
+                                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
+                                    : isPast
+                                    ? 'text-rose-400 bg-rose-500/10 border-rose-500/25'
+                                    : 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                                }`}
+                              >
+                                {isPast ? 'Overdue' : item.status}
+                              </span>
+                            </div>
+
+                            <p className={`font-medium text-sm ${isDone ? 'line-through text-zinc-400' : 'text-zinc-100'}`}>
+                              {item.title}
                             </p>
-                          )}
-                        </div>
-                      ))}
+
+                            {item.deadline && (
+                              <p className="text-xs text-zinc-400 flex items-center gap-1 font-mono mt-0.5">
+                                <Clock className="w-3 h-3 text-zinc-500" />
+                                {new Date(item.deadline).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -383,7 +414,7 @@ export default function Agenda() {
 
             <button
               onClick={() => setIsModalOpen(false)}
-              className="mt-6 w-full bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 font-semibold py-2.5 rounded-xl text-xs transition-all active:scale-98 border border-white/[0.05]"
+              className="mt-6 w-full bg-zinc-850 hover:bg-zinc-800 text-zinc-200 font-semibold py-2.5 rounded-xl text-xs transition-all active:scale-98 border border-white/[0.05]"
             >
               Done
             </button>
