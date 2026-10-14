@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
 import { BrandMark, Notice, Segmented } from '@/components/ui';
 import { Eye, EyeOff, ArrowRight, Loader2, MailCheck, RotateCcw, ArrowLeft } from 'lucide-react';
 
 export default function Auth() {
-  const { signInGuest } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -207,12 +205,6 @@ export default function Auth() {
                   )}
                 </button>
               </form>
-
-              <div className="mt-8 pt-6 border-t border-line text-center">
-                <button type="button" onClick={signInGuest} className="text-sm text-muted hover:text-ink underline underline-offset-4 decoration-line hover:decoration-ink transition-colors">
-                  Explore as a guest — no cloud sync
-                </button>
-              </div>
             </>
           )}
         </div>

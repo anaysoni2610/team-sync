@@ -37,14 +37,6 @@ export default function Agenda() {
 
   const fetchData = useCallback(async () => {
     if (isGuest) {
-      setAssignments([
-        { id: 'demo-1', title: 'Math Problem Set 4', subject: 'Mathematics', deadline: new Date(Date.now() - 86400000).toISOString(), attachment_url: null, status: 'pending', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-2', title: 'Lab Report: Enzyme Kinetics', subject: 'Biology', deadline: new Date(Date.now() + 86400000).toISOString(), attachment_url: null, status: 'in_progress', source: 'calendar', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-3', title: 'History Essay Draft', subject: 'History', deadline: new Date(Date.now() + 172800000).toISOString(), attachment_url: null, status: 'submitted', source: 'manual', user_id: 'guest', created_at: new Date().toISOString() },
-      ]);
-      setTasks([
-        { id: 'demo-t1', title: 'Review lecture notes', description: null, due_date: new Date(Date.now() + 86400000).toISOString(), status: 'pending', user_id: 'guest', created_at: new Date().toISOString() },
-      ]);
       setLoading(false);
       return;
     }

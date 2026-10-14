@@ -31,11 +31,6 @@ export default function Tasks() {
 
   const fetchTasks = useCallback(async () => {
     if (isGuest) {
-      setTasks([
-        { id: 'demo-1', title: 'Review lecture notes', description: 'Chapter 3-5 review for midterm', due_date: new Date(Date.now() + 86400000).toISOString(), status: 'pending', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-2', title: 'Buy groceries', description: null, due_date: new Date(Date.now() + 3600000).toISOString(), status: 'in_progress', user_id: 'guest', created_at: new Date().toISOString() },
-        { id: 'demo-3', title: 'Submit project proposal', description: 'Draft version for feedback', due_date: null, status: 'completed', user_id: 'guest', created_at: new Date().toISOString() },
-      ]);
       setLoading(false);
       return;
     }
