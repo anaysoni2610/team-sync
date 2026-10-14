@@ -5,92 +5,111 @@ import Tasks from '@/components/Tasks';
 import Agenda from '@/components/Agenda';
 import Assignments from '@/components/Assignments';
 import Settings from '@/components/Settings';
-import {
-  ListTodo,
-  CalendarDays,
-  GraduationCap,
-  Settings as SettingsIcon,
-  CheckSquare,
-  Loader2,
-} from 'lucide-react';
+import { ListTodo, CalendarDays, GraduationCap, Settings as SettingsIcon, Loader2, LogOut } from 'lucide-react';
+import { BrandMark } from '@/components/ui';
 
 type Tab = 'tasks' | 'agenda' | 'assignments' | 'settings';
 
 const tabs: { id: Tab; label: string; icon: typeof ListTodo }[] = [
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
-  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'assignments', label: 'Assignments', icon: GraduationCap },
+  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, isGuest, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#08090d] flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 mb-4 shadow-lg shadow-indigo-500/20">
-            <CheckSquare className="w-8 h-8 text-white" />
-          </div>
-          <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
-        </div>
+      <div className="min-h-dvh flex flex-col items-center justify-center gap-5">
+        <BrandMark className="w-12 h-12" />
+        <Loader2 className="w-5 h-5 text-primary animate-spin" aria-label="Loading" />
       </div>
     );
   }
 
-  if (!user) {
-    return <Auth />;
-  }
+  if (!user) return <Auth />;
 
   return (
-    <div className="min-h-screen bg-[#08090d] text-slate-100 flex flex-col">
-      {/* Main View Area */}
-      <main className="flex-1 overflow-y-auto pb-28">
+    <div className="min-h-dvh lg:pl-64">
+      {/* Desktop sidebar */}
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col bg-sidebar text-sidebar-text">
+        <div className="flex items-center gap-3 px-6 h-20">
+          <BrandMark />
+          <span className="font-display text-[26px] text-canvas leading-none">TeamSync</span>
+        </div>
+        <nav className="flex-1 px-3 pt-4 space-y-0.5" aria-label="Main">
+          {tabs.map(({ id, label, icon: Icon }) => {
+            const active = activeTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                aria-current={active ? 'page' : undefined}
+                className={`w-full flex items-center gap-3 h-10 px-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  active ? 'bg-white/[0.08] text-canvas' : 'hover:bg-white/[0.04] hover:text-canvas'
+                }`}
+              >
+                <Icon className={`w-[18px] h-[18px] ${active ? 'text-[#8FD3B6]' : ''}`} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="m-3 p-3 rounded-lg border border-sidebar-line">
+          <p className="text-[13px] text-canvas truncate">{user.email}</p>
+          <p className="text-xs mt-0.5">{isGuest ? 'Guest · this device only' : 'Synced across devices'}</p>
+          <button
+            onClick={signOut}
+            className="mt-3 flex items-center gap-2 text-xs font-medium hover:text-canvas transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            {isGuest ? 'Exit guest mode' : 'Sign out'}
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile top bar */}
+      <div className="lg:hidden sticky top-0 z-30 flex items-center gap-2.5 px-4 h-14 bg-canvas/90 backdrop-blur border-b border-line pt-[env(safe-area-inset-top)] box-content">
+        <BrandMark className="w-7 h-7" />
+        <span className="font-display text-[22px] leading-none">TeamSync</span>
+      </div>
+
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 pt-6 lg:pt-12 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-16">
         {activeTab === 'tasks' && <Tasks />}
         {activeTab === 'agenda' && <Agenda />}
         {activeTab === 'assignments' && <Assignments />}
         {activeTab === 'settings' && <Settings />}
       </main>
 
-      {/* Floating Island Navigation */}
-      <div className="fixed bottom-4 inset-x-0 z-40 px-4 pointer-events-none flex justify-center">
-        <nav className="pointer-events-auto w-full max-w-md glass-panel rounded-2xl p-1.5 flex items-center justify-around shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-
+      {/* Mobile bottom tabs */}
+      <nav
+        aria-label="Main"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-sidebar pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="grid grid-cols-4 h-16">
+          {tabs.map(({ id, label, icon: Icon }) => {
+            const active = activeTab === id;
             return (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative px-4 py-2 rounded-xl flex flex-col items-center gap-1 transition-all duration-200 active:scale-95 ${
-                  isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                key={id}
+                onClick={() => setActiveTab(id)}
+                aria-current={active ? 'page' : undefined}
+                className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${
+                  active ? 'text-canvas' : 'text-sidebar-text'
                 }`}
               >
-                {/* Active Pill Background */}
-                {isActive && (
-                  <span className="absolute inset-0 bg-indigo-600/20 border border-indigo-500/30 rounded-xl -z-10 shadow-[0_0_12px_rgba(99,102,241,0.25)]" />
-                )}
-
-                <Icon
-                  className={`w-4 h-4 transition-transform ${
-                    isActive ? 'scale-110 text-indigo-400' : ''
-                  }`}
-                />
-                <span
-                  className={`text-[10px] tracking-tight font-medium ${
-                    isActive ? 'font-semibold' : ''
-                  }`}
-                >
-                  {tab.label}
+                <span className={`flex items-center justify-center w-12 h-7 rounded-full transition-colors ${active ? 'bg-white/[0.1]' : ''}`}>
+                  <Icon className={`w-[18px] h-[18px] ${active ? 'text-[#8FD3B6]' : ''}`} />
                 </span>
+                {label}
               </button>
             );
           })}
-        </nav>
-      </div>
+        </div>
+      </nav>
     </div>
   );
 }

@@ -1,37 +1,38 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, type Assignment, type NewAssignment, type AssignmentStatus } from '@/lib/supabase';
+import { supabase, importCalendarFeed, type Assignment, type NewAssignment, type AssignmentStatus } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  Plus, Trash2, Clock, ExternalLink,
-  X, Loader2, GraduationCap, RefreshCw, CheckCircle2,
-  Calendar, AlertTriangle, Check, ArrowUpRight
-} from 'lucide-react';
+import { daysFromToday, formatTime, fromLocalInput, relativeDue, subjectColor, toLocalInputString } from '@/lib/format';
+import { ConfirmDelete, EmptyState, Notice, PageHeader, Sheet, Spinner } from '@/components/ui';
+import { Plus, Check, CalendarPlus, GraduationCap, Search, Link2, Loader2, ChevronRight } from 'lucide-react';
 
-function toLocalInputString(isoStr: string | null): string {
-  if (!isoStr) return '';
-  const d = new Date(isoStr);
-  if (isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const STATUS_LABEL: Record<AssignmentStatus, string> = {
+  pending: 'Pending',
+  in_progress: 'In progress',
+  submitted: 'Submitted',
+  graded: 'Graded',
+};
+
+const STATUS_STYLE: Record<AssignmentStatus, string> = {
+  pending: 'text-muted bg-sunken',
+  in_progress: 'text-info bg-info-soft',
+  submitted: 'text-ok bg-ok-soft',
+  graded: 'text-ok bg-ok-soft',
+};
+
+const EMPTY_FORM: NewAssignment = { title: '', subject: '', deadline: null, attachment_url: '', status: 'pending', source: 'manual' };
+
+function byDeadline(a: Assignment, b: Assignment) {
+  if (!a.deadline) return 1;
+  if (!b.deadline) return -1;
+  return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
 }
 
-function formatDeadline(dateStr: string | null): string {
-  if (!dateStr) return 'No deadline';
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diff = d.getTime() - now.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-
-  if (diff < 0) return `Overdue by ${Math.abs(days)}d`;
-  if (hours < 24) return `Due in ${hours}h`;
-  if (days === 0) return 'Due today';
-  if (days === 1) return 'Due tomorrow';
-  return `Due in ${days}d · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+function isDone(status: AssignmentStatus) {
+  return status === 'submitted' || status === 'graded';
 }
 
 function isOverdue(dateStr: string | null, status: AssignmentStatus): boolean {
-  if (!dateStr || status === 'submitted' || status === 'graded') return false;
+  if (!dateStr || isDone(status)) return false;
   return new Date(dateStr) < new Date();
 }
 
@@ -45,14 +46,10 @@ export default function Assignments() {
   const [importUrl, setImportUrl] = useState('');
   const [importName, setImportName] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
-  const [newAssignment, setNewAssignment] = useState<NewAssignment>({
-    title: '',
-    subject: '',
-    deadline: null,
-    attachment_url: '',
-    status: 'pending',
-    source: 'manual',
-  });
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState('');
+  const [newAssignment, setNewAssignment] = useState<NewAssignment>(EMPTY_FORM);
 
   const fetchAssignments = useCallback(async () => {
     if (isGuest) {
@@ -90,25 +87,13 @@ export default function Assignments() {
         if (item.user_id && item.user_id !== user?.id) return;
         setAssignments((prev) => {
           if (prev.some((a) => a.id === item.id)) return prev;
-          const updated = [...prev, item];
-          return updated.sort((a, b) => {
-            if (!a.deadline) return 1;
-            if (!b.deadline) return -1;
-            return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-          });
+          return [...prev, item].sort(byDeadline);
         });
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assignments' }, (payload) => {
         const item = payload.new as Assignment;
         if (item.user_id && item.user_id !== user?.id) return;
-        setAssignments((prev) => {
-          const updated = prev.map((a) => (a.id === item.id ? item : a));
-          return updated.sort((a, b) => {
-            if (!a.deadline) return 1;
-            if (!b.deadline) return -1;
-            return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-          });
-        });
+        setAssignments((prev) => prev.map((a) => (a.id === item.id ? item : a)).sort(byDeadline));
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'assignments' }, (payload) => {
         setAssignments((prev) => prev.filter((a) => a.id !== payload.old.id));
@@ -136,12 +121,8 @@ export default function Assignments() {
         user_id: 'guest',
         created_at: new Date().toISOString(),
       };
-      setAssignments((prev) => [...prev, assignment].sort((a, b) => {
-        if (!a.deadline) return 1;
-        if (!b.deadline) return -1;
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-      }));
-      setNewAssignment({ title: '', subject: '', deadline: null, attachment_url: '', status: 'pending', source: 'manual' });
+      setAssignments((prev) => [...prev, assignment].sort(byDeadline));
+      setNewAssignment(EMPTY_FORM);
       setShowForm(false);
       return;
     }
@@ -168,14 +149,10 @@ export default function Assignments() {
     }
 
     if (data) {
-      setAssignments((prev) => [...prev, data].sort((a, b) => {
-        if (!a.deadline) return 1;
-        if (!b.deadline) return -1;
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-      }));
+      setAssignments((prev) => (prev.some((a) => a.id === data.id) ? prev : [...prev, data].sort(byDeadline)));
     }
 
-    setNewAssignment({ title: '', subject: '', deadline: null, attachment_url: '', status: 'pending', source: 'manual' });
+    setNewAssignment(EMPTY_FORM);
     setShowForm(false);
   };
 
@@ -218,353 +195,330 @@ export default function Assignments() {
     if (!importUrl.trim()) return;
     setSyncing(true);
     setImportError(null);
+    setImportSuccess(null);
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ical-import`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ feed_url: importUrl.trim(), feed_name: importName.trim() || 'Imported Calendar' }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || `Import failed (${response.status})`);
-      }
+      const result = await importCalendarFeed(importUrl.trim(), importName.trim() || 'Imported Calendar');
       setImportUrl('');
       setImportName('');
       setShowImport(false);
+      setImportSuccess(`Imported ${result.imported} assignment(s) from ${result.total_found || 0} calendar event(s).`);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Failed to import calendar.');
     }
     setSyncing(false);
   };
 
-  // Split assignments into Overdue Alerts, Pending, and Completed
-  const overdueList = assignments.filter((a) => isOverdue(a.deadline, a.status));
-  const pendingList = assignments.filter((a) => !isOverdue(a.deadline, a.status) && a.status !== 'submitted' && a.status !== 'graded');
-  const completedList = assignments.filter((a) => a.status === 'submitted' || a.status === 'graded');
+  const subjects = [...new Set(assignments.map((a) => a.subject).filter((s): s is string => !!s))].sort();
+  const q = query.trim().toLowerCase();
+  const visible = assignments.filter(
+    (a) =>
+      (!subjectFilter || a.subject === subjectFilter) &&
+      (!q || a.title.toLowerCase().includes(q) || a.subject?.toLowerCase().includes(q))
+  );
+
+  const overdueList = visible.filter((a) => isOverdue(a.deadline, a.status));
+  const openList = visible.filter((a) => !isOverdue(a.deadline, a.status) && !isDone(a.status));
+  const thisWeek = openList.filter((a) => a.deadline && daysFromToday(a.deadline) <= 7);
+  const later = openList.filter((a) => a.deadline && daysFromToday(a.deadline) > 7);
+  const undated = openList.filter((a) => !a.deadline);
+  const completedList = visible.filter((a) => isDone(a.status));
+
+  const totalOverdue = assignments.filter((a) => isOverdue(a.deadline, a.status)).length;
+  const totalDone = assignments.filter((a) => isDone(a.status)).length;
+  const filtering = !!q || !!subjectFilter;
+
+  const row = (a: Assignment) => (
+    <AssignmentRow key={a.id} assignment={a} onStatus={handleStatusChange} onDelete={handleDelete} />
+  );
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2 tracking-tight">
-            <GraduationCap className="w-6 h-6 text-indigo-400" />
-            Assignments
-          </h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            {pendingList.length + overdueList.length} active coursework · {completedList.length} submitted
-          </p>
+    <div>
+      <PageHeader
+        eyebrow="Coursework"
+        title="Assignments"
+        meta={
+          <>
+            {assignments.length - totalDone} open
+            {totalOverdue > 0 && <span className="text-danger font-medium"> · {totalOverdue} overdue</span>} · {totalDone} submitted
+          </>
+        }
+        actions={
+          <>
+            {!isGuest && (
+              <button onClick={() => { setImportError(null); setShowImport(true); }} className="btn-secondary">
+                <CalendarPlus className="w-4 h-4" /> <span className="hidden sm:inline">Import</span>
+                <span className="sr-only sm:hidden">Import calendar</span>
+              </button>
+            )}
+            <button onClick={() => setShowForm(true)} className="btn-primary flex-1 sm:flex-none">
+              <Plus className="w-4 h-4" /> New assignment
+            </button>
+          </>
+        }
+      />
+
+      <Sheet
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        title="Import a calendar"
+        description="Paste an Outlook or Teams iCal link. Deadlines become assignments."
+      >
+        <form onSubmit={handleImportCalendar} className="space-y-4">
+          <div>
+            <label htmlFor="imp-name" className="field-label">
+              Name <span className="text-faint font-normal">· optional</span>
+            </label>
+            <input id="imp-name" autoFocus type="text" placeholder="e.g. Teams / Outlook" value={importName} onChange={(e) => setImportName(e.target.value)} className="field" />
+          </div>
+          <div>
+            <label htmlFor="imp-url" className="field-label">iCal / ICS URL</label>
+            <input
+              id="imp-url"
+              type="url"
+              required
+              placeholder="https://outlook.live.com/owa/calendar/…/calendar.ics"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              className="field"
+            />
+          </div>
+          {importError && <Notice type="error">{importError}</Notice>}
+          <button type="submit" disabled={syncing} className="btn-primary w-full">
+            {syncing && <Loader2 className="w-4 h-4 animate-spin" />}
+            Import deadlines
+          </button>
+        </form>
+      </Sheet>
+
+      <Sheet open={showForm} onClose={() => setShowForm(false)} title="New assignment">
+        <form onSubmit={handleAdd} className="space-y-4">
+          <div>
+            <label htmlFor="as-title" className="field-label">Title</label>
+            <input
+              id="as-title"
+              autoFocus
+              required
+              type="text"
+              placeholder="e.g. Lab report 3"
+              value={newAssignment.title}
+              onChange={(e) => setNewAssignment({ ...newAssignment, title: e.target.value })}
+              className="field"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="as-subject" className="field-label">Subject</label>
+              <input
+                id="as-subject"
+                type="text"
+                list="as-subjects"
+                placeholder="Class name"
+                value={newAssignment.subject ?? ''}
+                onChange={(e) => setNewAssignment({ ...newAssignment, subject: e.target.value })}
+                className="field"
+              />
+              <datalist id="as-subjects">
+                {subjects.map((s) => <option key={s} value={s} />)}
+              </datalist>
+            </div>
+            <div>
+              <label htmlFor="as-deadline" className="field-label">Deadline</label>
+              <input
+                id="as-deadline"
+                type="datetime-local"
+                value={toLocalInputString(newAssignment.deadline)}
+                onChange={(e) => setNewAssignment({ ...newAssignment, deadline: fromLocalInput(e.target.value) })}
+                className="field"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="as-url" className="field-label">
+              Reference link <span className="text-faint font-normal">· optional</span>
+            </label>
+            <input
+              id="as-url"
+              type="url"
+              placeholder="https://"
+              value={newAssignment.attachment_url ?? ''}
+              onChange={(e) => setNewAssignment({ ...newAssignment, attachment_url: e.target.value })}
+              className="field"
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1 sm:flex-none">
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary flex-1">Add assignment</button>
+          </div>
+        </form>
+      </Sheet>
+
+      {importSuccess && <div className="mb-4"><Notice type="success">{importSuccess}</Notice></div>}
+
+      {assignments.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-2 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-faint pointer-events-none" />
+            <input
+              type="search"
+              aria-label="Search assignments"
+              placeholder="Search assignments"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="field pl-10"
+            />
+          </div>
+          {subjects.length > 0 && (
+            <select
+              aria-label="Filter by subject"
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              className="field sm:w-52 cursor-pointer"
+            >
+              <option value="">All subjects</option>
+              {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowImport(!showImport)}
-            className="bg-zinc-850 hover:bg-zinc-800 text-zinc-300 border border-white/[0.06] px-3.5 py-2 rounded-xl font-medium text-xs flex items-center gap-2 transition-all active:scale-95"
+      )}
+
+      {loading ? (
+        <Spinner />
+      ) : visible.length === 0 ? (
+        <div className="panel">
+          {filtering ? (
+            <EmptyState icon={Search} title="No matches" body="Try a different search or subject." />
+          ) : (
+            <EmptyState icon={GraduationCap} title="No assignments yet" body="Add one manually or import your Teams calendar." />
+          )}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {overdueList.length > 0 && (
+            <Section title="Overdue" count={overdueList.length} tone="danger">
+              {overdueList.map(row)}
+            </Section>
+          )}
+          {thisWeek.length > 0 && <Section title="Next 7 days" count={thisWeek.length}>{thisWeek.map(row)}</Section>}
+          {later.length > 0 && <Section title="Later" count={later.length}>{later.map(row)}</Section>}
+          {undated.length > 0 && <Section title="No deadline" count={undated.length}>{undated.map(row)}</Section>}
+          {openList.length === 0 && overdueList.length === 0 && (
+            <p className="font-display text-2xl text-ink">Nothing open. Well done.</p>
+          )}
+
+          {completedList.length > 0 && (
+            <details className="group">
+              <summary className="flex items-center gap-2 cursor-pointer list-none select-none mb-3 w-fit [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="w-4 h-4 text-muted transition-transform group-open:rotate-90" />
+                <span className="eyebrow">Submitted & graded</span>
+                <span className="text-xs text-faint">{completedList.length}</span>
+              </summary>
+              <ul className="panel divide-y divide-line overflow-hidden">{completedList.map(row)}</ul>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, count, tone, children }: { title: string; count: number; tone?: 'danger'; children: React.ReactNode }) {
+  return (
+    <section>
+      <h2 className={`eyebrow mb-3 flex items-center gap-2 ${tone === 'danger' ? '!text-danger' : ''}`}>
+        {tone === 'danger' && <span className="w-1.5 h-1.5 rounded-full bg-danger" />}
+        {title}
+        <span className="text-faint font-medium tracking-normal">{count}</span>
+      </h2>
+      <ul className={`panel divide-y divide-line overflow-hidden ${tone === 'danger' ? 'border-danger/30' : ''}`}>{children}</ul>
+    </section>
+  );
+}
+
+function AssignmentRow({
+  assignment: a,
+  onStatus,
+  onDelete,
+}: {
+  assignment: Assignment;
+  onStatus: (id: string, s: AssignmentStatus) => void;
+  onDelete: (id: string) => void;
+}) {
+  const done = isDone(a.status);
+  const overdue = isOverdue(a.deadline, a.status);
+  const due = a.deadline ? new Date(a.deadline) : null;
+  const soon = !!a.deadline && !done && !overdue && daysFromToday(a.deadline) <= 1;
+  const tag = subjectColor(a.subject);
+
+  return (
+    <li className="flex items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition-colors hover:bg-canvas/50">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={done}
+        aria-label={done ? `Move "${a.title}" back to pending` : `Mark "${a.title}" as submitted`}
+        onClick={() => onStatus(a.id, done ? 'pending' : 'submitted')}
+        className={`mt-1 w-[22px] h-[22px] shrink-0 rounded-md border-[1.5px] flex items-center justify-center transition-colors duration-150 ${
+          done ? 'bg-primary border-primary text-canvas' : overdue ? 'border-danger hover:bg-danger-soft' : 'border-faint hover:border-primary hover:bg-primary-soft'
+        }`}
+      >
+        {done && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+      </button>
+
+      <div className="hidden sm:flex flex-col items-center w-11 shrink-0 pt-0.5" aria-hidden>
+        {due ? (
+          <>
+            <span className={`font-display text-[28px] leading-none ${overdue ? 'text-danger' : 'text-ink'}`}>{due.getDate()}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted mt-1">
+              {due.toLocaleDateString('en-US', { month: 'short' })}
+            </span>
+          </>
+        ) : (
+          <span className="font-display text-[28px] leading-none text-faint">—</span>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {a.subject && (
+          <span className="inline-block max-w-full truncate align-top text-[11px] font-semibold px-1.5 py-0.5 rounded mb-1.5" style={tag}>
+            {a.subject}
+          </span>
+        )}
+        <p className={`text-[15px] font-medium leading-snug break-words ${done ? 'line-through text-faint' : 'text-ink'}`}>{a.title}</p>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2 text-xs">
+          <select
+            aria-label="Status"
+            value={a.status}
+            onChange={(e) => onStatus(a.id, e.target.value as AssignmentStatus)}
+            className={`h-7 pl-2 pr-1 rounded-md font-medium border-0 cursor-pointer ${STATUS_STYLE[a.status]}`}
           >
-            {showImport ? <X className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
-            {showImport ? 'Cancel' : 'Import'}
-          </button>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-gradient-to-b from-indigo-500 to-indigo-600 hover:brightness-110 text-white px-4 py-2 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all shadow-[0_4px_14px_rgba(99,102,241,0.35)] active:scale-95"
-          >
-            {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showForm ? 'Cancel' : 'New Assignment'}
-          </button>
+            {(Object.keys(STATUS_LABEL) as AssignmentStatus[]).map((s) => (
+              <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+            ))}
+          </select>
+          {a.deadline && (
+            <span className={overdue ? 'text-danger font-medium' : soon ? 'text-warn font-medium' : 'text-muted'}>
+              <span className="sm:hidden">{due!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, </span>
+              {formatTime(a.deadline)}
+              {!done && <> · {relativeDue(a.deadline)}</>}
+            </span>
+          )}
+          {a.attachment_url && (
+            <a
+              href={a.attachment_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-primary font-medium hover:underline underline-offset-2"
+            >
+              <Link2 className="w-3.5 h-3.5" /> Reference
+            </a>
+          )}
         </div>
       </div>
 
-      {/* Import Calendar Drawer */}
-      {showImport && (
-        <form onSubmit={handleImportCalendar} className="glass-panel rounded-3xl p-5 space-y-4">
-          <div>
-            <label className="text-xs text-zinc-400 mb-1 block">Calendar Title (optional)</label>
-            <input
-              autoFocus
-              type="text"
-              placeholder="e.g. Teams / Outlook"
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-              className="w-full glass-input rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-zinc-400 mb-1 block">iCal / ICS URL</label>
-            <input
-              type="url"
-              required
-              placeholder="https://outlook.live.com/owa/calendar/.../calendar.ics"
-              value={importUrl}
-              onChange={(e) => setImportUrl(e.target.value)}
-              className="w-full glass-input rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none"
-            />
-          </div>
-          {importError && (
-            <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3.5 py-2.5">
-              {importError}
-            </div>
-          )}
-          <button
-            type="submit"
-            disabled={syncing}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
-            Import Deadlines
-          </button>
-        </form>
-      )}
-
-      {/* Manual Creation Form */}
-      {showForm && (
-        <form onSubmit={handleAdd} className="glass-panel rounded-3xl p-5 space-y-4">
-          <input
-            autoFocus
-            type="text"
-            placeholder="Assignment title..."
-            value={newAssignment.title}
-            onChange={(e) => setNewAssignment({ ...newAssignment, title: e.target.value })}
-            className="w-full glass-input rounded-xl px-4 py-2.5 text-white placeholder-zinc-500 text-sm focus:outline-none"
-          />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              type="text"
-              placeholder="Subject / Class name"
-              value={newAssignment.subject ?? ''}
-              onChange={(e) => setNewAssignment({ ...newAssignment, subject: e.target.value })}
-              className="w-full glass-input rounded-xl px-3.5 py-2 text-white placeholder-zinc-500 text-sm focus:outline-none"
-            />
-            <input
-              type="datetime-local"
-              value={toLocalInputString(newAssignment.deadline)}
-              onChange={(e) => {
-                if (!e.target.value) {
-                  setNewAssignment({ ...newAssignment, deadline: null });
-                  return;
-                }
-                const local = new Date(e.target.value);
-                setNewAssignment({ ...newAssignment, deadline: local.toISOString() });
-              }}
-              className="w-full glass-input rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none [color-scheme:dark]"
-            />
-          </div>
-          <input
-            type="url"
-            placeholder="Reference material URL (optional)"
-            value={newAssignment.attachment_url ?? ''}
-            onChange={(e) => setNewAssignment({ ...newAssignment, attachment_url: e.target.value })}
-            className="w-full glass-input rounded-xl px-4 py-2 text-white placeholder-zinc-500 text-sm focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="w-full bg-gradient-to-b from-indigo-500 to-indigo-600 hover:brightness-110 text-white font-medium py-2.5 rounded-xl transition-all text-xs shadow-md shadow-indigo-500/20"
-          >
-            Add Assignment
-          </button>
-        </form>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 1. OVERDUE ALERTS SECTION (Only appears when items are past due)         */}
-      {/* ========================================================================= */}
-      {overdueList.length > 0 && (
-        <section className="p-4.5 rounded-3xl bg-rose-500/[0.06] border border-rose-500/30 shadow-[0_0_24px_rgba(244,63,94,0.12)] space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-rose-400">
-              <div className="p-1.5 rounded-lg bg-rose-500/20 border border-rose-500/30 animate-pulse">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <h2 className="text-sm font-semibold tracking-tight text-rose-300">
-                Overdue Alerts ({overdueList.length})
-              </h2>
-            </div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-rose-400/80 font-medium">
-              Immediate Attention
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {overdueList.map((item) => (
-              <div
-                key={item.id}
-                className="glass-panel border-rose-500/25 bg-black/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 group"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                      {item.subject || 'Coursework'}
-                    </span>
-                    <span className="text-[11px] text-rose-400 font-mono flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDeadline(item.deadline)}
-                    </span>
-                  </div>
-                  <p className="text-white text-sm font-medium mt-1 truncate">{item.title}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleStatusChange(item.id, 'submitted')}
-                    className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-xs transition-all active:scale-95 flex items-center gap-1 shadow-md shadow-rose-500/30"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    Mark Done
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="p-1.5 rounded-xl text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 2. PENDING COURSEWORK SUBSECTION                                          */}
-      {/* ========================================================================= */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-xs font-mono uppercase tracking-wider text-zinc-400 font-semibold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-            Pending Coursework ({pendingList.length})
-          </h2>
-        </div>
-
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
-          </div>
-        ) : pendingList.length === 0 ? (
-          <div className="text-center py-10 glass-panel rounded-3xl border-dashed">
-            <GraduationCap className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-            <p className="text-zinc-400 text-xs font-medium">All active coursework clear</p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {pendingList.map((assignment) => (
-              <div
-                key={assignment.id}
-                className="glass-panel hover:border-white/[0.14] rounded-2xl p-4 transition-all duration-200 active:scale-[0.99] flex flex-col gap-3 group"
-              >
-                {/* Subject & Deadline */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 truncate">
-                      {assignment.subject || 'Assignment'}
-                    </span>
-                  </div>
-
-                  {assignment.deadline && (
-                    <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-zinc-800/80 border border-white/[0.06] text-zinc-300 flex items-center gap-1.5">
-                      <Clock className="w-3 h-3 text-zinc-400" />
-                      {formatDeadline(assignment.deadline)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Title */}
-                <div>
-                  <h3 className="text-white font-medium text-[15px] leading-snug tracking-tight group-hover:text-indigo-200 transition-colors">
-                    {assignment.title}
-                  </h3>
-                </div>
-
-                {/* Status Switcher */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/[0.04]">
-                  <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.05]">
-                    {(['pending', 'in_progress', 'submitted', 'graded'] as const).map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => handleStatusChange(assignment.id, st)}
-                        className={`text-[10px] font-medium px-2.5 py-1 rounded-lg capitalize transition-all ${
-                          assignment.status === st
-                            ? 'bg-zinc-800 text-white shadow-sm font-semibold'
-                            : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
-                      >
-                        {st.replace('_', ' ')}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(assignment.id)}
-                    className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 3. COMPLETED & ARCHIVED SUBSECTION                                        */}
-      {/* ========================================================================= */}
-      {completedList.length > 0 && (
-        <section className="space-y-3 pt-2">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Completed & Submitted ({completedList.length})
-            </h2>
-          </div>
-
-          <div className="space-y-2.5">
-            {completedList.map((assignment) => (
-              <div
-                key={assignment.id}
-                className="glass-panel bg-black/25 opacity-70 hover:opacity-100 rounded-2xl p-4 transition-all duration-200 flex flex-col gap-2 group"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-400/80">
-                    {assignment.subject || 'Assignment'}
-                  </span>
-                  <span className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                    {assignment.status}
-                  </span>
-                </div>
-
-                <h3 className="text-zinc-300 line-through font-normal text-sm">
-                  {assignment.title}
-                </h3>
-
-                <div className="flex items-center justify-between pt-1 text-xs text-zinc-500">
-                  <span className="text-[11px]">
-                    Completed
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleStatusChange(assignment.id, 'pending')}
-                      className="text-[11px] text-zinc-400 hover:text-white transition-colors"
-                    >
-                      Revert to Pending
-                    </button>
-                    <button
-                      onClick={() => handleDelete(assignment.id)}
-                      className="p-1 rounded text-zinc-600 hover:text-rose-400"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
+      <ConfirmDelete label="Delete assignment" onConfirm={() => onDelete(a.id)} />
+    </li>
   );
 }

@@ -14,6 +14,18 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+/** Calls the ical-import edge function (same endpoint/body as before, URL taken from the client). */
+export async function importCalendarFeed(feedUrl: string, feedName: string) {
+  const { data, error } = await supabase.functions.invoke<{ imported: number; total_found?: number }>('ical-import', {
+    body: { feed_url: feedUrl, feed_name: feedName },
+  });
+  if (error) {
+    const body = await error.context?.json?.().catch(() => null);
+    throw new Error(body?.error || error.message || 'Failed to import calendar.');
+  }
+  return data!;
+}
+
 export type TaskStatus = 'pending' | 'in_progress' | 'completed';
 
 export type Task = {

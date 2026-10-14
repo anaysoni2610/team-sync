@@ -1,23 +1,11 @@
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  ArrowRight,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Sparkles,
-  Zap,
-  Inbox,
-  RotateCcw,
-} from 'lucide-react';
+import { BrandMark, Notice, Segmented } from '@/components/ui';
+import { Eye, EyeOff, ArrowRight, Loader2, MailCheck, RotateCcw, ArrowLeft } from 'lucide-react';
 
 export default function Auth() {
-  const authContext = useAuth() as any;
+  const { signInGuest } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,10 +43,10 @@ export default function Auth() {
 
         if (error) throw error;
       }
-    } catch (err: any) {
+    } catch (err) {
       setStatus({
         type: 'error',
-        message: err.message || 'Authentication failed. Please check your details.',
+        message: (err instanceof Error && err.message) || 'Authentication failed. Please check your details.',
       });
     } finally {
       setLoading(false);
@@ -76,254 +64,159 @@ export default function Auth() {
       });
       if (error) throw error;
       setStatus({ type: 'success', message: 'Verification link resent to your email.' });
-    } catch (err: any) {
-      setStatus({ type: 'error', message: err.message || 'Failed to resend email.' });
+    } catch (err) {
+      setStatus({ type: 'error', message: (err instanceof Error && err.message) || 'Failed to resend email.' });
     } finally {
       setResending(false);
     }
   };
 
-  const handleGuestLogin = () => {
-    if (authContext.signInAsGuest) {
-      authContext.signInAsGuest();
-    }
-  };
-
   return (
-    <div className="relative min-h-screen w-full bg-[#08090d] flex items-center justify-center p-4 sm:p-6 overflow-hidden select-none">
-      {/* Ambient background glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[340px] bg-indigo-600/15 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/3 w-[380px] h-[280px] bg-violet-600/10 rounded-full blur-[100px] pointer-events-none -z-10" />
+    <div className="min-h-dvh grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {/* Editorial panel (desktop) */}
+      <aside className="hidden lg:flex flex-col justify-between bg-sidebar text-sidebar-text p-12 xl:p-16">
+        <div className="flex items-center gap-3">
+          <BrandMark />
+          <span className="font-display text-[26px] text-canvas leading-none">TeamSync</span>
+        </div>
+        <div>
+          <p className="font-display text-[64px] xl:text-[76px] leading-[0.95] text-canvas">
+            Every deadline,
+            <br />
+            <em className="text-[#8FD3B6]">in one place.</em>
+          </p>
+          <p className="mt-6 max-w-sm text-[15px] leading-relaxed">
+            Tasks, Teams assignments and your calendar — synced across your phone and laptop.
+          </p>
+        </div>
+        <ul className="flex gap-8 text-xs uppercase tracking-[0.14em]">
+          <li>Tasks</li>
+          <li>Assignments</li>
+          <li>Agenda</li>
+        </ul>
+      </aside>
 
-      {/* Main Glass Card */}
-      <div className="w-full max-w-[420px] glass-panel rounded-3xl p-6 sm:p-8 relative z-10 shadow-[0_16px_40px_rgba(0,0,0,0.7)] border border-white/[0.08] backdrop-blur-2xl">
-        {/* ========================================================= */}
-        {/* VIEW 1: DEDICATED EMAIL CONFIRMATION SCREEN                */}
-        {/* ========================================================= */}
-        {emailSent ? (
-          <div className="flex flex-col items-center text-center py-2 animate-in fade-in zoom-in-95 duration-200">
-            {/* Pulsing Mail Icon */}
-            <div className="relative mb-5">
-              <div className="absolute -inset-2 bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-3xl blur opacity-50 animate-pulse" />
-              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-b from-[#181a24] to-[#0f1118] border border-white/[0.12] flex items-center justify-center shadow-inner">
-                <Inbox className="w-8 h-8 text-indigo-400 drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]" />
-              </div>
-            </div>
-
-            <h2 className="text-xl font-bold text-white tracking-tight">Check your email</h2>
-            <p className="text-zinc-400 text-xs mt-2 leading-relaxed px-2">
-              We just sent a confirmation link to:
-            </p>
-            <p className="text-indigo-300 font-mono text-xs font-semibold mt-1 px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 break-all">
-              {email}
-            </p>
-
-            <p className="text-zinc-500 text-[11px] mt-4 leading-relaxed max-w-xs">
-              Click the link inside to activate your TeamSync account. Once confirmed, you can log right in.
-            </p>
-
-            {status && (
-              <div
-                className={`mt-4 w-full text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2 border ${
-                  status.type === 'success'
-                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-                    : 'bg-rose-500/10 text-rose-300 border-rose-500/20'
-                }`}
-              >
-                {status.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                )}
-                <span className="text-left leading-tight">{status.message}</span>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="w-full space-y-2.5 mt-6 pt-5 border-t border-white/[0.06]">
-              <button
-                type="button"
-                onClick={handleResendVerification}
-                disabled={resending}
-                className="w-full bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/[0.06] py-2.5 rounded-xl font-medium text-xs flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-              >
-                {resending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
-                )}
-                Resend Confirmation Email
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailSent(false);
-                  setIsSignUp(false);
-                  setStatus(null);
-                }}
-                className="w-full text-xs text-zinc-500 hover:text-zinc-300 py-1.5 transition-colors"
-              >
-                ← Back to Sign In
-              </button>
-            </div>
+      <main className="flex flex-col items-center justify-center px-5 py-10 sm:px-8 pt-[max(2.5rem,env(safe-area-inset-top))]">
+        <div className="w-full max-w-[380px]">
+          <div className="lg:hidden flex items-center gap-3 mb-10">
+            <BrandMark />
+            <span className="font-display text-[26px] leading-none">TeamSync</span>
           </div>
-        ) : (
-          /* ========================================================= */
-          /* VIEW 2: STANDARD LOGIN / SIGNUP FORM                     */
-          /* ========================================================= */
-          <>
-            <div className="flex flex-col items-center text-center mb-7">
-              <div className="relative group mb-3">
-                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-violet-600 rounded-2xl blur opacity-50 group-hover:opacity-75 transition duration-300" />
-                <div className="relative w-13 h-13 rounded-2xl bg-gradient-to-b from-[#181a24] to-[#0f1118] border border-white/[0.12] flex items-center justify-center shadow-inner">
-                  <Zap className="w-6 h-6 text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-                </div>
+
+          {emailSent ? (
+            <div>
+              <MailCheck className="w-8 h-8 text-primary" strokeWidth={1.5} />
+              <h1 className="font-display text-[44px] leading-none mt-5">Check your email</h1>
+              <p className="text-muted mt-3">
+                We sent a confirmation link to <span className="text-ink font-medium break-all">{email}</span>. Open it to
+                activate your account, then sign in.
+              </p>
+
+              {status && <div className="mt-5"><Notice type={status.type}>{status.message}</Notice></div>}
+
+              <div className="mt-8 flex flex-col gap-2">
+                <button type="button" onClick={handleResendVerification} disabled={resending} className="btn-secondary w-full h-11">
+                  {resending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                  Resend confirmation email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailSent(false);
+                    setIsSignUp(false);
+                    setStatus(null);
+                  }}
+                  className="btn-ghost w-full"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back to sign in
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 className="font-display text-[44px] leading-none">{isSignUp ? 'Create an account' : 'Welcome back'}</h1>
+              <p className="text-muted mt-3 mb-8">
+                {isSignUp ? 'Start tracking your coursework in minutes.' : 'Sign in to pick up where you left off.'}
+              </p>
+
+              <div className="mb-6 [&>div]:w-full [&_button]:flex-1">
+                <Segmented
+                  label="Account mode"
+                  value={isSignUp ? 'up' : 'in'}
+                  onChange={(v) => {
+                    setIsSignUp(v === 'up');
+                    setStatus(null);
+                  }}
+                  options={[
+                    { value: 'in', label: 'Sign in' },
+                    { value: 'up', label: 'Create account' },
+                  ]}
+                />
               </div>
 
-              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-1.5">
-                TeamSync
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
-                  PRO
-                </span>
-              </h1>
-              <p className="text-zinc-400 text-xs mt-1.5">
-                Your university assignments, tasks, and agendas synced in real time
-              </p>
-            </div>
-
-            {/* Segment Switcher */}
-            <div className="relative p-1 bg-black/50 border border-white/[0.05] rounded-xl flex items-center mb-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(false);
-                  setStatus(null);
-                }}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
-                  !isSignUp
-                    ? 'bg-zinc-800/90 text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)] border border-white/[0.08]'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(true);
-                  setStatus(null);
-                }}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
-                  isSignUp
-                    ? 'bg-zinc-800/90 text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)] border border-white/[0.08]'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-zinc-400 block tracking-wide uppercase">
-                  Email Address
-                </label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
-                    <Mail className="w-4 h-4" />
-                  </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="auth-email" className="field-label">Email</label>
                   <input
+                    id="auth-email"
                     type="email"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="student@university.edu"
-                    className="w-full glass-input rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none transition-all"
+                    className="field"
                   />
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-zinc-400 block tracking-wide uppercase">
-                  Password
-                </label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-indigo-400 transition-colors">
-                    <Lock className="w-4 h-4" />
+                <div>
+                  <label htmlFor="auth-password" className="field-label">Password</label>
+                  <div className="relative">
+                    <input
+                      id="auth-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={isSignUp ? 'At least 6 characters' : ''}
+                      className="field pr-11"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-1 my-auto icon-btn"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
                 </div>
-              </div>
 
-              {status && (
-                <div
-                  className={`text-xs px-3.5 py-2.5 rounded-xl flex items-start gap-2.5 border transition-all animate-in fade-in slide-in-from-top-1 ${
-                    status.type === 'success'
-                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-                      : 'bg-rose-500/10 text-rose-300 border-rose-500/20'
-                  }`}
-                >
-                  {status.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                {status && <Notice type={status.type}>{status.message}</Notice>}
+
+                <button type="submit" disabled={loading} className="btn-primary w-full h-11 !mt-6">
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                    <>
+                      {isSignUp ? 'Create account' : 'Sign in'}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
                   )}
-                  <span className="leading-snug">{status.message}</span>
-                </div>
-              )}
+                </button>
+              </form>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full relative group overflow-hidden bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-semibold py-2.5 rounded-xl text-xs transition-all duration-200 shadow-[0_4px_18px_rgba(99,102,241,0.35)] hover:shadow-[0_6px_22px_rgba(99,102,241,0.45)] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <span>{isSignUp ? 'Create My Account' : 'Sign In'}</span>
-                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            {authContext.signInAsGuest && (
-              <div className="mt-5 pt-4 border-t border-white/[0.06] text-center">
-                <button
-                  type="button"
-                  onClick={handleGuestLogin}
-                  className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors inline-flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  Explore as Guest (No Cloud Sync)
+              <div className="mt-8 pt-6 border-t border-line text-center">
+                <button type="button" onClick={signInGuest} className="text-sm text-muted hover:text-ink underline underline-offset-4 decoration-line hover:decoration-ink transition-colors">
+                  Explore as a guest — no cloud sync
                 </button>
               </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <p className="absolute bottom-4 text-[11px] text-zinc-600 tracking-wider">
-        Teams & University Task Automation Dashboard
-      </p>
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

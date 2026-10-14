@@ -1,27 +1,39 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase, type Assignment, type Task } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  ChevronLeft,
-  ChevronRight,
-  CalendarDays,
-  Clock,
-  CheckCircle2,
-  Circle,
-  X,
-  Sparkles,
-  GraduationCap,
-} from 'lucide-react';
+import { formatTime, isSameDay, subjectColor } from '@/lib/format';
+import { EmptyState, PageHeader, Spinner } from '@/components/ui';
+import { ChevronLeft, ChevronRight, Check, Coffee } from 'lucide-react';
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const isDone = (a: Assignment) => a.status === 'submitted' || a.status === 'graded';
+
+// Dot colours, in priority order: overdue > in progress > pending > all done. Tasks get their own dot.
+const DOT = {
+  overdue: { cls: 'bg-danger', label: 'Overdue' },
+  in_progress: { cls: 'bg-info', label: 'In progress' },
+  pending: { cls: 'bg-warn', label: 'Pending' },
+  done: { cls: 'bg-ok', label: 'Submitted' },
+  task: { cls: 'bg-ink', label: 'Task' },
+};
+
+function assignmentDot(a: Assignment): keyof typeof DOT {
+  if (isDone(a)) return 'done';
+  if (new Date(a.deadline!) < new Date()) return 'overdue';
+  return a.status === 'in_progress' ? 'in_progress' : 'pending';
+}
 
 export default function Agenda() {
-  const { user, isGuest } = useAuth();
+  const { isGuest } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const fetchData = useCallback(async () => {
     if (isGuest) {
@@ -59,390 +71,216 @@ export default function Agenda() {
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayIndex = new Date(year, month, 1).getDay();
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-  const goToToday = () => setCurrentDate(new Date());
-
-  const isSameDay = (d1: Date, d2: Date) => {
-    return (
-      d1.getFullYear() === d2.getFullYear() &&
-      d1.getMonth() === d2.getMonth() &&
-      d1.getDate() === d2.getDate()
-    );
+  const goToToday = () => {
+    setCurrentDate(new Date());
+    setSelectedDate(new Date());
   };
 
-  const getDayAnalytics = (day: number) => {
-    const targetDate = new Date(year, month, day);
+  const itemsOn = useCallback(
+    (date: Date) => ({
+      assignments: assignments.filter((a) => a.deadline && isSameDay(new Date(a.deadline), date)),
+      tasks: tasks.filter((t) => t.due_date && isSameDay(new Date(t.due_date), date)),
+    }),
+    [assignments, tasks]
+  );
 
-    const dayAssignments = assignments.filter((a) => {
-      if (!a.deadline) return false;
-      return isSameDay(new Date(a.deadline), targetDate);
-    });
-
-    const dayTasks = tasks.filter((t) => {
-      if (!t.due_date) return false;
-      return isSameDay(new Date(t.due_date), targetDate);
-    });
-
+  const dayDots = (dayAssignments: Assignment[], dayTasks: Task[]) => {
     const now = new Date();
-    const hasOverdue = dayAssignments.some(
-      (a) => (a.status !== 'submitted' && a.status !== 'graded') && new Date(a.deadline!) < now
-    );
-    const hasInProgress = dayAssignments.some(
-      (a) => a.status === 'in_progress'
-    );
-    const hasPending = dayAssignments.some(
-      (a) => a.status === 'pending'
-    );
-    const allCompleted = dayAssignments.length > 0 && dayAssignments.every(
-      (a) => a.status === 'submitted' || a.status === 'graded'
-    );
-
-    return {
-      assignments: dayAssignments,
-      tasks: dayTasks,
-      total: dayAssignments.length + dayTasks.length,
-      hasOverdue,
-      hasInProgress,
-      hasPending,
-      allCompleted,
-    };
+    const dots: (keyof typeof DOT)[] = [];
+    if (dayAssignments.some((a) => !isDone(a) && new Date(a.deadline!) < now)) dots.push('overdue');
+    else if (dayAssignments.some((a) => a.status === 'in_progress')) dots.push('in_progress');
+    else if (dayAssignments.some((a) => a.status === 'pending')) dots.push('pending');
+    else if (dayAssignments.length > 0) dots.push('done');
+    if (dayTasks.length > 0) dots.push('task');
+    return dots;
   };
 
-  const selectedDayItems = useMemo(() => {
-    if (!selectedDate) return { assignments: [], tasks: [], total: 0 };
-    const dayAssignments = assignments.filter((a) => a.deadline && isSameDay(new Date(a.deadline), selectedDate));
-    const dayTasks = tasks.filter((t) => t.due_date && isSameDay(new Date(t.due_date), selectedDate));
-    return { assignments: dayAssignments, tasks: dayTasks, total: dayAssignments.length + dayTasks.length };
-  }, [selectedDate, assignments, tasks]);
-
-  const handleDateClick = (day: number) => {
-    setSelectedDate(new Date(year, month, day));
-    setIsModalOpen(true);
-  };
-
+  const selected = useMemo(() => itemsOn(selectedDate), [itemsOn, selectedDate]);
+  const selectedTotal = selected.assignments.length + selected.tasks.length;
   const today = new Date();
 
+  const monthCount = useMemo(
+    () =>
+      assignments.filter((a) => {
+        if (!a.deadline) return false;
+        const d = new Date(a.deadline);
+        return d.getFullYear() === year && d.getMonth() === month && !isDone(a);
+      }).length,
+    [assignments, year, month]
+  );
+
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2 tracking-tight">
-            <CalendarDays className="w-6 h-6 text-indigo-400" />
-            Agenda
-          </h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Dynamic calendar tracking: sky for in progress, amber for pending, rose for overdue, emerald for done
-          </p>
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        eyebrow="Calendar"
+        title="Agenda"
+        meta={`${monthCount} open deadline${monthCount === 1 ? '' : 's'} in ${MONTHS[month]}`}
+      />
 
-      {/* Calendar Matrix Card */}
-      <div className="glass-panel rounded-3xl p-5 md:p-6 shadow-2xl mb-6">
-        {/* Navigation Toolbar */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg md:text-xl font-bold text-white tracking-tight">
-              {monthNames[month]}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+        <section className="panel p-3 sm:p-5" aria-label="Month calendar">
+          <div className="flex items-center justify-between gap-3 mb-4 px-1">
+            <h2 className="font-display text-[30px] leading-none">
+              {MONTHS[month]} <span className="text-faint">{year}</span>
             </h2>
-            <span className="text-sm font-mono text-zinc-500 font-medium">{year}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={goToToday}
-              className="text-xs px-3 py-1.5 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 font-medium border border-white/[0.06] transition-all active:scale-95"
-            >
-              Today
-            </button>
-            <div className="flex items-center bg-black/40 border border-white/[0.05] rounded-xl p-0.5">
-              <button
-                onClick={prevMonth}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all active:scale-90"
-              >
-                <ChevronLeft className="w-4 h-4" />
+            <div className="flex items-center gap-1">
+              <button onClick={goToToday} className="btn-ghost h-9 px-3">Today</button>
+              <button onClick={prevMonth} className="icon-btn" aria-label="Previous month">
+                <ChevronLeft className="w-5 h-5" />
               </button>
-              <button
-                onClick={nextMonth}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all active:scale-90"
-              >
-                <ChevronRight className="w-4 h-4" />
+              <button onClick={nextMonth} className="icon-btn" aria-label="Next month">
+                <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Days of Week Header */}
-        <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-mono font-medium text-zinc-500 uppercase tracking-wider mb-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} className="py-1">
-              {d}
+          <div className="grid grid-cols-7 text-center mb-1">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+              <div key={d} className="eyebrow !tracking-[0.08em] py-2">
+                <span className="sm:hidden">{d[0]}</span>
+                <span className="hidden sm:inline">{d}</span>
+              </div>
+            ))}
+          </div>
+
+          {loading ? (
+            <Spinner />
+          ) : (
+            <div className="grid grid-cols-7 gap-px bg-line border border-line rounded-lg overflow-hidden">
+              {Array.from({ length: firstDayIndex }).map((_, i) => (
+                <div key={`empty-${i}`} className="bg-canvas/60" />
+              ))}
+
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const thisDate = new Date(year, month, dayNum);
+                const isToday = isSameDay(thisDate, today);
+                const isSelected = isSameDay(thisDate, selectedDate);
+                const { assignments: dayA, tasks: dayT } = itemsOn(thisDate);
+                const dots = dayDots(dayA, dayT);
+                const titles = [
+                  ...dayA.map((a) => ({ title: a.title, cls: DOT[assignmentDot(a)].cls })),
+                  ...dayT.map((t) => ({ title: t.title, cls: DOT.task.cls })),
+                ];
+                const total = titles.length;
+
+                return (
+                  <button
+                    key={dayNum}
+                    onClick={() => setSelectedDate(thisDate)}
+                    aria-pressed={isSelected}
+                    aria-label={`${thisDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}${total ? `, ${total} item${total === 1 ? '' : 's'}` : ''}`}
+                    className={`relative flex flex-col items-center md:items-stretch text-left aspect-square md:aspect-auto md:min-h-[92px] p-1 md:p-2 transition-colors duration-150 focus-visible:z-10 ${
+                      isSelected ? 'bg-primary-soft' : 'bg-surface hover:bg-canvas'
+                    }`}
+                  >
+                    <span
+                      className={`flex items-center justify-center w-7 h-7 rounded-full text-[13px] tabular-nums ${
+                        isToday ? 'bg-primary text-canvas font-semibold' : total ? 'text-ink font-medium' : 'text-faint'
+                      }`}
+                    >
+                      {dayNum}
+                    </span>
+
+                    {/* Phones: status dots. Desktop: first titles. */}
+                    {dots.length > 0 && (
+                      <span className="flex gap-1 mt-auto mb-1 md:hidden">
+                        {dots.map((d) => (
+                          <span key={d} className={`w-1.5 h-1.5 rounded-full ${DOT[d].cls}`} />
+                        ))}
+                      </span>
+                    )}
+                    {total > 0 && (
+                      <span className="hidden md:flex flex-col gap-0.5 mt-1 min-w-0">
+                        {titles.slice(0, 2).map((t, idx) => (
+                          <span key={idx} className="flex items-center gap-1 text-[11px] leading-tight text-ink truncate">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.cls}`} />
+                            <span className="truncate">{t.title}</span>
+                          </span>
+                        ))}
+                        {total > 2 && <span className="text-[11px] text-muted pl-2.5">+{total - 2} more</span>}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          )}
 
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-          {Array.from({ length: firstDayIndex }).map((_, i) => (
-            <div key={`empty-${i}`} className="aspect-square opacity-0 pointer-events-none" />
-          ))}
+          <ul className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 px-1 text-xs text-muted" aria-label="Legend">
+            {Object.values(DOT).map((d) => (
+              <li key={d.label} className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${d.cls}`} />
+                {d.label}
+              </li>
+            ))}
+          </ul>
+        </section>
 
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const dayNum = i + 1;
-            const thisDate = new Date(year, month, dayNum);
-            const isToday = isSameDay(thisDate, today);
-            const { total, hasOverdue, hasInProgress, hasPending, allCompleted, tasks: dayT } = getDayAnalytics(dayNum);
+        <aside className="xl:sticky xl:top-12" aria-live="polite">
+          <p className="eyebrow">{isSameDay(selectedDate, today) ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'long' })}</p>
+          <h2 className="font-display text-[34px] leading-tight mt-1">
+            {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+          </h2>
+          <p className="text-sm text-muted mb-4">
+            {selectedTotal === 0 ? 'Nothing due' : `${selectedTotal} item${selectedTotal === 1 ? '' : 's'} due`}
+          </p>
 
-            return (
-              <button
-                key={dayNum}
-                onClick={() => handleDateClick(dayNum)}
-                className={`aspect-square rounded-2xl p-1.5 sm:p-2 flex flex-col justify-between items-center relative transition-all duration-200 active:scale-90 group ${
-                  isToday
-                    ? 'bg-indigo-600/20 border-2 border-indigo-500/80 shadow-[0_0_16px_rgba(99,102,241,0.25)]'
-                    : total > 0
-                    ? 'bg-zinc-850/60 border border-white/[0.09] hover:border-indigo-500/50 hover:bg-zinc-800'
-                    : 'bg-zinc-900/30 border border-white/[0.03] hover:bg-zinc-800/40 hover:border-white/[0.08]'
-                }`}
-              >
-                <span
-                  className={`text-xs font-semibold ${
-                    isToday ? 'text-indigo-300 font-bold' : total > 0 ? 'text-zinc-100' : 'text-zinc-500'
-                  }`}
-                >
-                  {dayNum}
-                </span>
-
-                {/* Status Color Indicators */}
-                {total > 0 && (
-                  <div className="flex items-center gap-1 mt-auto pb-0.5">
-                    {/* 1. Overdue takes top priority */}
-                    {hasOverdue && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse"
-                        title="Overdue coursework"
-                      />
+          {selectedTotal === 0 ? (
+            <div className="panel">
+              <EmptyState icon={Coffee} title="A free day" body="Nothing scheduled or due on this date." />
+            </div>
+          ) : (
+            <ul className="panel divide-y divide-line overflow-hidden">
+              {selected.assignments.map((item) => {
+                const done = isDone(item);
+                const late = !done && new Date(item.deadline!) < new Date();
+                const statusText = late ? 'Overdue' : item.status.replace('_', ' ');
+                return (
+                  <li key={item.id} className="px-4 py-3.5">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium tabular-nums text-muted">{formatTime(item.deadline!)}</span>
+                      <span className={`capitalize font-medium ${late ? 'text-danger' : done ? 'text-ok' : item.status === 'in_progress' ? 'text-info' : 'text-warn'}`}>
+                        {statusText}
+                      </span>
+                    </div>
+                    <p className={`text-[15px] font-medium mt-1 break-words ${done ? 'line-through text-faint' : 'text-ink'}`}>{item.title}</p>
+                    {item.subject && (
+                      <span className="inline-block mt-1.5 text-[11px] font-semibold px-1.5 py-0.5 rounded" style={subjectColor(item.subject)}>
+                        {item.subject}
+                      </span>
                     )}
-
-                    {/* 2. In Progress (Sky Blue) */}
-                    {!hasOverdue && hasInProgress && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]"
-                        title="Coursework in progress"
-                      />
-                    )}
-
-                    {/* 3. Pending (Amber) */}
-                    {!hasOverdue && !hasInProgress && hasPending && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
-                        title="Pending coursework"
-                      />
-                    )}
-
-                    {/* 4. Completed (Emerald) */}
-                    {!hasOverdue && !hasInProgress && !hasPending && allCompleted && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
-                        title="All coursework completed"
-                      />
-                    )}
-
-                    {/* 5. Custom Tasks (Indigo) */}
-                    {dayT.length > 0 && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.6)]"
-                        title="Tasks scheduled"
-                      />
-                    )}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+                  </li>
+                );
+              })}
+              {selected.tasks.map((task) => {
+                const done = task.status === 'completed';
+                return (
+                  <li key={task.id} className="px-4 py-3.5 flex items-start gap-3">
+                    <span
+                      className={`mt-0.5 w-[18px] h-[18px] rounded-full border-[1.5px] shrink-0 flex items-center justify-center ${
+                        done ? 'bg-primary border-primary text-canvas' : 'border-faint'
+                      }`}
+                      aria-label={done ? 'Completed' : 'Not completed'}
+                    >
+                      {done && <Check className="w-3 h-3" strokeWidth={3} />}
+                    </span>
+                    <div className="min-w-0">
+                      <p className={`text-[15px] font-medium break-words ${done ? 'line-through text-faint' : 'text-ink'}`}>{task.title}</p>
+                      <p className="text-xs text-muted mt-0.5 tabular-nums">Task · {formatTime(task.due_date!)}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </aside>
       </div>
-
-      {/* ========================================================================= */}
-      {/* BOTTOM SHEET / MODAL DRAWER                                              */}
-      {/* ========================================================================= */}
-      {isModalOpen && selectedDate && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div
-            onClick={() => setIsModalOpen(false)}
-            className="fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
-          />
-
-          <div className="relative w-full max-w-lg bg-[#0e1017] border border-white/[0.09] rounded-t-[32px] sm:rounded-3xl p-6 shadow-2xl z-10 max-h-[85vh] overflow-y-auto transform transition-all duration-300 animate-in slide-in-from-bottom-8 sm:zoom-in-95">
-            <div className="w-12 h-1 bg-zinc-700/80 rounded-full mx-auto mb-5 sm:hidden" />
-
-            {/* Header */}
-            <div className="flex items-start justify-between mb-5">
-              <div>
-                <span className="text-[11px] font-mono font-medium px-2.5 py-1 bg-indigo-500/15 text-indigo-300 border border-indigo-500/25 rounded-lg">
-                  {selectedDayItems.total} {selectedDayItems.total === 1 ? 'Item Scheduled' : 'Items Scheduled'}
-                </span>
-                <h2 className="text-xl font-bold text-white mt-2 tracking-tight">
-                  {selectedDate.toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </h2>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Content List */}
-            {selectedDayItems.total === 0 ? (
-              <div className="text-center py-12 border border-dashed border-white/[0.06] rounded-2xl bg-black/20">
-                <Sparkles className="w-8 h-8 text-indigo-400/60 mx-auto mb-2" />
-                <p className="text-zinc-200 font-medium text-sm">Schedule Free</p>
-                <p className="text-zinc-500 text-xs mt-1">
-                  Nothing scheduled or due on this date.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Coursework with Specific In-Progress Styling */}
-                {selectedDayItems.assignments.length > 0 && (
-                  <div>
-                    <h4 className="text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
-                      Teams Assignments ({selectedDayItems.assignments.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {selectedDayItems.assignments.map((item) => {
-                        const isDone = item.status === 'submitted' || item.status === 'graded';
-                        const isPast = item.deadline && new Date(item.deadline) < new Date() && !isDone;
-                        const isInProgress = item.status === 'in_progress';
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={`border rounded-2xl p-4 flex flex-col gap-1.5 transition-all ${
-                              isDone
-                                ? 'bg-emerald-500/[0.04] border-emerald-500/20'
-                                : isPast
-                                ? 'bg-rose-500/[0.05] border-rose-500/30'
-                                : isInProgress
-                                ? 'bg-sky-500/[0.05] border-sky-500/30'
-                                : 'bg-black/30 border-white/[0.06]'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono font-medium truncate max-w-[200px]">
-                                {item.subject || 'Coursework'}
-                              </span>
-
-                              <span
-                                className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${
-                                  isDone
-                                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
-                                    : isPast
-                                    ? 'text-rose-400 bg-rose-500/10 border-rose-500/25'
-                                    : isInProgress
-                                    ? 'text-sky-400 bg-sky-500/10 border-sky-500/25'
-                                    : 'text-amber-400 bg-amber-400/10 border-amber-400/20'
-                                }`}
-                              >
-                                {isPast ? 'Overdue' : item.status.replace('_', ' ')}
-                              </span>
-                            </div>
-
-                            <p className={`font-medium text-sm ${isDone ? 'line-through text-zinc-400' : 'text-zinc-100'}`}>
-                              {item.title}
-                            </p>
-
-                            {item.deadline && (
-                              <p className="text-xs text-zinc-400 flex items-center gap-1 font-mono mt-0.5">
-                                <Clock className="w-3 h-3 text-zinc-500" />
-                                Due at{' '}
-                                {new Date(item.deadline).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Tasks */}
-                {selectedDayItems.tasks.length > 0 && (
-                  <div>
-                    <h4 className="text-[11px] font-mono font-semibold text-indigo-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Tasks ({selectedDayItems.tasks.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {selectedDayItems.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="bg-black/30 border border-white/[0.06] rounded-2xl p-3.5 flex items-start gap-3"
-                        >
-                          <div className="mt-0.5">
-                            {task.status === 'completed' ? (
-                              <CheckCircle2 className="w-4 h-4 text-indigo-400" />
-                            ) : (
-                              <Circle className="w-4 h-4 text-zinc-600" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p
-                              className={`text-sm font-medium ${
-                                task.status === 'completed'
-                                  ? 'line-through text-zinc-500'
-                                  : 'text-zinc-100'
-                              }`}
-                            >
-                              {task.title}
-                            </p>
-                            {task.due_date && (
-                              <p className="text-xs text-zinc-400 flex items-center gap-1 mt-0.5 font-mono">
-                                <Clock className="w-3 h-3 text-zinc-500" />
-                                {new Date(task.due_date).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="mt-6 w-full bg-zinc-850 hover:bg-zinc-800 text-zinc-200 font-semibold py-2.5 rounded-xl text-xs transition-all active:scale-98 border border-white/[0.05]"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
